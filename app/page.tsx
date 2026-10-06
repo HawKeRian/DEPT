@@ -5,7 +5,8 @@ import {
   Bell, Bot, Building2, CalendarDays, CarFront, Check, ChevronRight,
   CircleDollarSign, CreditCard, GraduationCap, Home, LayoutDashboard,
   Lightbulb, Menu, MoreHorizontal, Plus, ReceiptText, Settings,
-  ShieldCheck, Sparkles, TrendingDown, WalletCards, X,
+  Droplets, Repeat2, ShieldCheck, Smartphone, Sparkles, TrendingDown,
+  WalletCards, Wifi, X, Zap,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 
-type View = "overview" | "debts" | "calendar" | "planner";
+type View = "overview" | "debts" | "expenses" | "calendar" | "planner";
 type Debt = {
   id: number;
   name: string;
@@ -27,11 +28,30 @@ type Debt = {
   tone: "mint" | "orange" | "blue" | "purple";
 };
 
+type Expense = {
+  id: number;
+  name: string;
+  category: string;
+  amount: number;
+  due: string;
+  icon: "electric" | "water" | "phone" | "internet" | "food" | "subscription";
+  autoPay?: boolean;
+};
+
 const initialDebts: Debt[] = [
   { id: 1, name: "บ้าน", category: "สินเชื่อที่อยู่อาศัย", balance: 2380000, monthly: 16800, progress: 24, due: "5 ต.ค.", tone: "mint" },
   { id: 2, name: "รถ", category: "สินเชื่อเช่าซื้อ", balance: 428000, monthly: 9250, progress: 46, due: "12 ต.ค.", tone: "orange" },
   { id: 3, name: "บัตร K", category: "บัตรเครดิต", balance: 48500, monthly: 4850, progress: 18, due: "18 ต.ค.", tone: "blue" },
   { id: 4, name: "กยศ.", category: "เงินกู้เพื่อการศึกษา", balance: 164000, monthly: 1380, progress: 39, due: "สำรองทุกเดือน", tone: "purple" },
+];
+
+const initialExpenses: Expense[] = [
+  { id: 1, name: "ค่าไฟ", category: "สาธารณูปโภค", amount: 1850, due: "10 ต.ค.", icon: "electric" },
+  { id: 2, name: "ค่าน้ำ", category: "สาธารณูปโภค", amount: 320, due: "12 ต.ค.", icon: "water" },
+  { id: 3, name: "ค่าโทรศัพท์", category: "การสื่อสาร", amount: 699, due: "15 ต.ค.", icon: "phone", autoPay: true },
+  { id: 4, name: "อินเทอร์เน็ตบ้าน", category: "การสื่อสาร", amount: 599, due: "20 ต.ค.", icon: "internet", autoPay: true },
+  { id: 5, name: "ค่าอาหารและของใช้", category: "ชีวิตประจำวัน", amount: 9000, due: "งบทั้งเดือน", icon: "food" },
+  { id: 6, name: "บริการรายเดือน", category: "สมาชิกและแอป", amount: 499, due: "25 ต.ค.", icon: "subscription", autoPay: true },
 ];
 
 const money = new Intl.NumberFormat("th-TH", { maximumFractionDigits: 0 });
@@ -50,6 +70,15 @@ const iconFor = (name: string, className = "size-5") => {
   return <GraduationCap className={className} />;
 };
 
+const expenseIcon = (icon: Expense["icon"]) => {
+  if (icon === "electric") return <Zap className="size-5" />;
+  if (icon === "water") return <Droplets className="size-5" />;
+  if (icon === "phone") return <Smartphone className="size-5" />;
+  if (icon === "internet") return <Wifi className="size-5" />;
+  if (icon === "subscription") return <Repeat2 className="size-5" />;
+  return <ReceiptText className="size-5" />;
+};
+
 const toneClasses = {
   mint: "bg-[#d7ff71] text-[#11241b]",
   orange: "bg-[#ffddae] text-[#4b2a05]",
@@ -60,12 +89,15 @@ const toneClasses = {
 export default function HomePage() {
   const [view, setView] = useState<View>("overview");
   const [addOpen, setAddOpen] = useState(false);
+  const [addExpenseOpen, setAddExpenseOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [debts, setDebts] = useState(initialDebts);
+  const [expenses, setExpenses] = useState(initialExpenses);
   const [notice, setNotice] = useState("");
 
   const monthlyTotal = useMemo(() => debts.reduce((sum, item) => sum + item.monthly, 0), [debts]);
   const totalBalance = useMemo(() => debts.reduce((sum, item) => sum + item.balance, 0), [debts]);
+  const monthlyExpenseTotal = useMemo(() => expenses.reduce((sum, item) => sum + item.amount, 0), [expenses]);
 
   useEffect(() => {
     const modelContext = (document as Document & {
@@ -83,7 +115,20 @@ export default function HomePage() {
         annotations: { readOnlyHint: true, untrustedContentHint: false },
         execute: (input: unknown) => {
           requireEmptyInput(input);
-          return { totalBalance, monthlyTotal, debtCount: debts.length, nextDue: "บ้าน วันที่ 5 ต.ค." };
+          return { totalBalance, monthlyTotal, monthlyExpenseTotal, debtCount: debts.length, expenseCount: expenses.length, nextDue: "บ้าน วันที่ 5 ต.ค." };
+        },
+      }, { signal: lifecycle.signal });
+      await modelContext.registerTool({
+        name: "open_add_expense_form",
+        title: "เปิดแบบฟอร์มเพิ่มรายจ่าย",
+        description: "เปิดแบบฟอร์มเพิ่มรายจ่ายประจำรายเดือนบนหน้าจอ",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: false, untrustedContentHint: false },
+        execute: (input: unknown) => {
+          requireEmptyInput(input);
+          setView("expenses");
+          setAddExpenseOpen(true);
+          return { status: "opened" };
         },
       }, { signal: lifecycle.signal });
       await modelContext.registerTool({
@@ -101,7 +146,7 @@ export default function HomePage() {
     };
     void register().catch(() => undefined);
     return () => lifecycle.abort();
-  }, [debts.length, monthlyTotal, totalBalance]);
+  }, [debts.length, expenses.length, monthlyExpenseTotal, monthlyTotal, totalBalance]);
 
   const addDemoDebt = () => {
     setDebts((current) => [
@@ -113,6 +158,16 @@ export default function HomePage() {
     setTimeout(() => setNotice(""), 2800);
   };
 
+  const addDemoExpense = () => {
+    setExpenses((current) => [
+      ...current,
+      { id: Date.now(), name: "ค่าที่จอดรถ", category: "การเดินทาง", amount: 1200, due: "1 ของทุกเดือน", icon: "subscription" },
+    ]);
+    setAddExpenseOpen(false);
+    setNotice("เพิ่มรายจ่ายประจำเรียบร้อยแล้ว");
+    setTimeout(() => setNotice(""), 2800);
+  };
+
   return (
     <main className="min-h-screen bg-[#f4f7f3] text-[#14231c]">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[236px] flex-col border-r border-[#dfe7e1] bg-[#f9fbf8] px-4 py-6 lg:flex">
@@ -120,6 +175,7 @@ export default function HomePage() {
         <nav className="mt-10 space-y-1" aria-label="เมนูหลัก">
           <NavItem active={view === "overview"} icon={<LayoutDashboard />} label="ภาพรวม" onClick={() => setView("overview")} />
           <NavItem active={view === "debts"} icon={<WalletCards />} label="หนี้ของฉัน" badge={String(debts.length)} onClick={() => setView("debts")} />
+          <NavItem active={view === "expenses"} icon={<ReceiptText />} label="รายจ่ายประจำ" badge={String(expenses.length)} onClick={() => setView("expenses")} />
           <NavItem active={view === "calendar"} icon={<CalendarDays />} label="ปฏิทินชำระ" onClick={() => setView("calendar")} />
           <NavItem active={view === "planner"} icon={<Sparkles />} label="AI วางแผน" onClick={() => setView("planner")} />
         </nav>
@@ -144,7 +200,7 @@ export default function HomePage() {
           <div><p className="text-xs font-medium text-[#718078]">วันจันทร์ที่ 5 ตุลาคม</p><h1 className="text-lg font-bold tracking-[-0.02em]">สวัสดีตอนเย็น, กิตติพงษ์</h1></div>
           <div className="ml-auto flex items-center gap-2">
             <button className="relative flex size-10 items-center justify-center rounded-full border border-[#dfe7e1] bg-white" aria-label="การแจ้งเตือน"><Bell className="size-[18px]" /><span className="absolute right-2 top-2 size-2 rounded-full bg-[#ff7657] ring-2 ring-white" /></button>
-            <Button onClick={() => setAddOpen(true)} className="h-10 rounded-full bg-[#152d23] px-4 text-white hover:bg-[#244538]"><Plus /> <span className="hidden sm:inline">เพิ่มรายการหนี้</span></Button>
+            <Button onClick={() => view === "expenses" ? setAddExpenseOpen(true) : setAddOpen(true)} className="h-10 rounded-full bg-[#152d23] px-4 text-white hover:bg-[#244538]"><Plus /> <span className="hidden sm:inline">{view === "expenses" ? "เพิ่มรายจ่าย" : "เพิ่มรายการหนี้"}</span></Button>
           </div>
         </header>
 
@@ -155,6 +211,7 @@ export default function HomePage() {
               <nav className="mt-10 space-y-2">
                 <NavItem active={view === "overview"} icon={<LayoutDashboard />} label="ภาพรวม" onClick={() => { setView("overview"); setMenuOpen(false); }} />
                 <NavItem active={view === "debts"} icon={<WalletCards />} label="หนี้ของฉัน" onClick={() => { setView("debts"); setMenuOpen(false); }} />
+                <NavItem active={view === "expenses"} icon={<ReceiptText />} label="รายจ่ายประจำ" onClick={() => { setView("expenses"); setMenuOpen(false); }} />
                 <NavItem active={view === "calendar"} icon={<CalendarDays />} label="ปฏิทินชำระ" onClick={() => { setView("calendar"); setMenuOpen(false); }} />
                 <NavItem active={view === "planner"} icon={<Sparkles />} label="AI วางแผน" onClick={() => { setView("planner"); setMenuOpen(false); }} />
               </nav>
@@ -163,21 +220,24 @@ export default function HomePage() {
         )}
 
         <div className="mx-auto max-w-[1440px] p-4 sm:p-7 lg:p-10">
-          {view === "overview" && <Overview debts={debts} monthlyTotal={monthlyTotal} totalBalance={totalBalance} onViewAll={() => setView("debts")} onPlanner={() => setView("planner")} />}
+          {view === "overview" && <Overview debts={debts} expenses={expenses} monthlyTotal={monthlyTotal} monthlyExpenseTotal={monthlyExpenseTotal} totalBalance={totalBalance} onViewAll={() => setView("debts")} onViewExpenses={() => setView("expenses")} onPlanner={() => setView("planner")} />}
           {view === "debts" && <DebtsView debts={debts} totalBalance={totalBalance} monthlyTotal={monthlyTotal} onAdd={() => setAddOpen(true)} />}
+          {view === "expenses" && <ExpensesView expenses={expenses} monthlyExpenseTotal={monthlyExpenseTotal} monthlyDebtTotal={monthlyTotal} onAdd={() => setAddExpenseOpen(true)} />}
           {view === "calendar" && <CalendarView debts={debts} />}
           {view === "planner" && <PlannerView onBack={() => setView("overview")} />}
         </div>
       </section>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-[#dfe7e1] bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden" aria-label="เมนูมือถือ">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-[#dfe7e1] bg-white/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden" aria-label="เมนูมือถือ">
         <MobileNav active={view === "overview"} icon={<Home />} label="ภาพรวม" onClick={() => setView("overview")} />
         <MobileNav active={view === "debts"} icon={<WalletCards />} label="หนี้" onClick={() => setView("debts")} />
+        <MobileNav active={view === "expenses"} icon={<ReceiptText />} label="รายจ่าย" onClick={() => setView("expenses")} />
         <MobileNav active={view === "calendar"} icon={<CalendarDays />} label="ปฏิทิน" onClick={() => setView("calendar")} />
         <MobileNav active={view === "planner"} icon={<Sparkles />} label="AI วางแผน" onClick={() => setView("planner")} />
       </nav>
 
       <AddDebtDialog open={addOpen} onOpenChange={setAddOpen} onSave={addDemoDebt} />
+      <AddExpenseDialog open={addExpenseOpen} onOpenChange={setAddExpenseOpen} onSave={addDemoExpense} />
       {notice && <div role="status" className="fixed bottom-24 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#152d23] px-5 py-3 text-sm font-medium text-white shadow-xl lg:bottom-8"><Check className="size-4 text-[#d7ff71]" />{notice}</div>}
     </main>
   );
@@ -195,9 +255,9 @@ function MobileNav({ active, icon, label, onClick }: { active?: boolean; icon: R
   return <button onClick={onClick} className={`flex flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] font-semibold ${active ? "text-[#153c2c]" : "text-[#829087]"}`}><span className={`grid size-8 place-items-center rounded-full [&>svg]:size-[18px] ${active ? "bg-[#d7ff71]" : ""}`}>{icon}</span>{label}</button>;
 }
 
-function Overview({ debts, monthlyTotal, totalBalance, onViewAll, onPlanner }: { debts: Debt[]; monthlyTotal: number; totalBalance: number; onViewAll: () => void; onPlanner: () => void }) {
+function Overview({ debts, expenses, monthlyTotal, monthlyExpenseTotal, totalBalance, onViewAll, onViewExpenses, onPlanner }: { debts: Debt[]; expenses: Expense[]; monthlyTotal: number; monthlyExpenseTotal: number; totalBalance: number; onViewAll: () => void; onViewExpenses: () => void; onPlanner: () => void }) {
   const income = 68000;
-  const essentials = 19700;
+  const essentials = monthlyExpenseTotal;
   const remaining = income - essentials - monthlyTotal;
   return <div className="space-y-6">
     <div className="grid gap-6 xl:grid-cols-[1.4fr_.9fr]">
@@ -211,9 +271,14 @@ function Overview({ debts, monthlyTotal, totalBalance, onViewAll, onPlanner }: {
       <section className="rounded-[28px] border border-[#dfe7e1] bg-white p-6 sm:p-7">
         <div className="flex items-start justify-between"><div><p className="text-sm font-semibold text-[#607069]">เงินของเดือนนี้</p><p className="mt-2 text-3xl font-black tracking-[-0.04em]">฿{money.format(remaining)}</p><p className="mt-1 text-xs text-[#819087]">คงเหลือหลังหักภาระทั้งหมด</p></div><span className="rounded-full bg-[#e8f9e8] px-3 py-1.5 text-xs font-bold text-[#337547]">คล่องตัวดี</span></div>
         <div className="mt-7 flex h-3 overflow-hidden rounded-full bg-[#edf1ed]"><span className="w-[48%] bg-[#173a2b]" /><span className="w-[29%] bg-[#9ec979]" /><span className="w-[23%] bg-[#d7ff71]" /></div>
-        <div className="mt-6 space-y-4"><MoneyLine color="bg-[#173a2b]" label="ชำระหนี้" amount={monthlyTotal} /><MoneyLine color="bg-[#9ec979]" label="ค่าใช้จ่ายจำเป็น" amount={essentials} /><MoneyLine color="bg-[#d7ff71]" label="เหลือใช้และออม" amount={remaining} strong /></div>
+        <div className="mt-6 space-y-4"><MoneyLine color="bg-[#173a2b]" label="ชำระหนี้" amount={monthlyTotal} /><MoneyLine color="bg-[#9ec979]" label="รายจ่ายประจำ" amount={essentials} /><MoneyLine color="bg-[#d7ff71]" label="เหลือใช้และออม" amount={remaining} strong /></div>
       </section>
     </div>
+
+    <section className="rounded-[28px] border border-[#dfe7e1] bg-white p-5 sm:p-7">
+      <div className="mb-5 flex items-center justify-between"><div><h2 className="text-lg font-extrabold">รายจ่ายประจำเดือนนี้</h2><p className="mt-1 text-xs text-[#7a8981]">รวม ฿{money.format(monthlyExpenseTotal)} · {expenses.length} รายการ</p></div><button onClick={onViewExpenses} className="text-sm font-bold text-[#365b49]">จัดการรายจ่าย</button></div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{expenses.slice(0, 4).map((expense) => <div key={expense.id} className="flex items-center gap-3 rounded-2xl bg-[#f3f7f2] p-3.5"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-[#456852]">{expenseIcon(expense.icon)}</div><div className="min-w-0"><p className="truncate text-sm font-bold">{expense.name}</p><p className="text-xs text-[#7b8981]">{expense.due}</p></div><p className="ml-auto text-sm font-black">฿{money.format(expense.amount)}</p></div>)}</div>
+    </section>
 
     <div className="grid gap-6 xl:grid-cols-[1.35fr_.95fr]">
       <section className="rounded-[28px] border border-[#dfe7e1] bg-white p-5 sm:p-7">
@@ -254,6 +319,21 @@ function DebtsView({ debts, totalBalance, monthlyTotal, onAdd }: { debts: Debt[]
 
 function SummaryCard({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) { return <div className="rounded-[22px] border border-[#dfe7e1] bg-white p-5"><div className="flex items-center justify-between text-[#6f8077]"><span className="text-xs font-semibold">{label}</span><span className="[&>svg]:size-5">{icon}</span></div><p className="mt-3 text-2xl font-black tracking-[-0.04em]">{value}</p></div>; }
 
+function ExpensesView({ expenses, monthlyExpenseTotal, monthlyDebtTotal, onAdd }: { expenses: Expense[]; monthlyExpenseTotal: number; monthlyDebtTotal: number; onAdd: () => void }) {
+  const autoPayTotal = expenses.filter((item) => item.autoPay).reduce((sum, item) => sum + item.amount, 0);
+  return <div>
+    <div className="mb-7 flex items-end justify-between"><div><p className="text-sm font-semibold text-[#75847c]">ค่าใช้จ่ายที่เกิดซ้ำ</p><h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">รายจ่ายประจำ</h2></div><Button onClick={onAdd} className="rounded-full bg-[#152d23]"><Plus /> เพิ่มรายจ่าย</Button></div>
+    <div className="grid gap-4 sm:grid-cols-3"><SummaryCard label="รวมเดือนนี้" value={`฿${money.format(monthlyExpenseTotal)}`} icon={<ReceiptText />} /><SummaryCard label="ตัดอัตโนมัติ" value={`฿${money.format(autoPayTotal)}`} icon={<Repeat2 />} /><SummaryCard label="จำนวนรายการ" value={`${expenses.length} รายการ`} icon={<CalendarDays />} /></div>
+    <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_340px]">
+      <section className="overflow-hidden rounded-[28px] border border-[#dfe7e1] bg-white">
+        <div className="border-b border-[#e6ece7] px-5 py-4 sm:px-7"><h3 className="font-extrabold">รายการทั้งหมด</h3></div>
+        <div className="divide-y divide-[#e8ede9] px-5 sm:px-7">{expenses.map((expense) => <div key={expense.id} className="flex items-center gap-3 py-4"><div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#edf4eb] text-[#41604d]">{expenseIcon(expense.icon)}</div><div className="min-w-0"><p className="truncate text-sm font-bold">{expense.name}</p><p className="mt-0.5 text-xs text-[#7b8981]">{expense.category} · {expense.due}</p></div>{expense.autoPay && <span className="ml-auto hidden rounded-full bg-[#e7f4e5] px-2.5 py-1 text-[11px] font-bold text-[#39704a] sm:block">อัตโนมัติ</span>}<p className={`${expense.autoPay ? "sm:ml-2" : "ml-auto"} text-sm font-black`}>฿{money.format(expense.amount)}</p><ChevronRight className="size-4 text-[#a3aea8]" /></div>)}</div>
+      </section>
+      <aside className="rounded-[28px] bg-[#e6efdf] p-6"><div className="grid size-11 place-items-center rounded-2xl bg-white"><Sparkles className="size-5" /></div><h3 className="mt-6 text-2xl font-black leading-snug tracking-[-0.04em]">ค่าใช้จ่ายประจำคิดเป็น {Math.round(monthlyExpenseTotal / 680)}% ของรายได้</h3><p className="mt-3 text-sm leading-6 text-[#5e7065]">เดือนนี้ค่าอาหารและของใช้เป็นหมวดที่สูงที่สุด ลองตั้งงบย่อยรายสัปดาห์ที่ประมาณ ฿2,250</p><div className="mt-6 rounded-2xl bg-white/70 p-4"><p className="text-xs text-[#718078]">งบที่ยังใช้ได้หลังหักหนี้และรายจ่าย</p><p className="mt-1 text-2xl font-black">฿{money.format(68000 - monthlyDebtTotal - monthlyExpenseTotal)}</p></div></aside>
+    </div>
+  </div>;
+}
+
 function CalendarView({ debts }: { debts: Debt[] }) {
   const days = Array.from({ length: 35 }, (_, i) => i < 3 ? null : i - 2);
   return <div><p className="text-sm font-semibold text-[#75847c]">กำหนดชำระ</p><h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">ตุลาคม 2569</h2><div className="mt-7 grid gap-6 xl:grid-cols-[1fr_360px]"><section className="rounded-[28px] border border-[#dfe7e1] bg-white p-4 sm:p-7"><div className="grid grid-cols-7 text-center text-xs font-bold text-[#849189]">{["จ.","อ.","พ.","พฤ.","ศ.","ส.","อา."].map((d)=><div key={d} className="pb-4">{d}</div>)}</div><div className="grid grid-cols-7 gap-1 sm:gap-2">{days.map((day,index)=><div key={index} className={`relative min-h-16 rounded-xl p-2 text-sm sm:min-h-24 ${day===5?"bg-[#152d23] text-white":"bg-[#f6f8f5]"}`}>{day && <><span className="font-semibold">{day}</span>{[5,12,18,25].includes(day) && <span className={`absolute bottom-2 left-2 right-2 h-1.5 rounded-full ${day===5?"bg-[#d7ff71]":"bg-[#82aa75]"}`} />}</>}</div>)}</div></section><aside className="rounded-[28px] bg-[#152d23] p-6 text-white"><p className="text-xs font-semibold text-white/50">กำลังจะถึง</p><h3 className="mt-1 text-xl font-black">4 รายการในเดือนนี้</h3><div className="mt-6 space-y-3">{debts.map((debt,index)=><div key={debt.id} className="flex items-center gap-3 rounded-2xl bg-white/[.07] p-3"><div className={`grid size-10 place-items-center rounded-xl ${toneClasses[debt.tone]}`}>{iconFor(debt.name,"size-4")}</div><div><p className="text-sm font-bold">{debt.name}</p><p className="text-xs text-white/50">{index===3?"สำรองทุกเดือน":debt.due}</p></div><p className="ml-auto text-sm font-bold">฿{money.format(debt.monthly)}</p></div>)}</div></aside></div></div>;
@@ -266,6 +346,10 @@ function PlannerView({ onBack }: { onBack: () => void }) {
 
 function AddDebtDialog({ open, onOpenChange, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: () => void }) {
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-auto rounded-[26px] border-[#dfe7e1] p-0 sm:max-w-[540px]"><DialogHeader className="border-b border-[#e4eae5] p-6 text-left"><DialogTitle className="text-2xl font-black tracking-[-0.03em]">เพิ่มรายการหนี้</DialogTitle><DialogDescription>กรอกข้อมูลคร่าว ๆ ก่อนได้ แก้ไขรายละเอียดภายหลังได้เสมอ</DialogDescription></DialogHeader><div className="space-y-5 px-6"><Field label="ประเภทหนี้"><select className="field-input"><option>สินเชื่อส่วนบุคคล</option><option>บ้าน</option><option>รถ</option><option>บัตรเครดิต</option><option>กยศ.</option></select></Field><Field label="ชื่อรายการ"><input className="field-input" defaultValue="สินเชื่อส่วนบุคคล" /></Field><div className="grid grid-cols-2 gap-4"><Field label="ยอดคงเหลือ"><input className="field-input" inputMode="decimal" defaultValue="95,000" /></Field><Field label="ยอดจ่ายต่อเดือน"><input className="field-input" inputMode="decimal" defaultValue="3,200" /></Field></div><div className="grid grid-cols-2 gap-4"><Field label="ดอกเบี้ยต่อปี"><input className="field-input" defaultValue="12.5%" /></Field><Field label="วันครบกำหนด"><input className="field-input" defaultValue="25 ต.ค. 2569" /></Field></div></div><DialogFooter className="mt-2 border-t border-[#e4eae5] p-6"><DialogClose asChild><Button variant="outline" className="h-11 rounded-full px-5">ยกเลิก</Button></DialogClose><Button onClick={onSave} className="h-11 rounded-full bg-[#152d23] px-6 text-white">บันทึกรายการ</Button></DialogFooter></DialogContent></Dialog>;
+}
+
+function AddExpenseDialog({ open, onOpenChange, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: () => void }) {
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-auto rounded-[26px] border-[#dfe7e1] p-0 sm:max-w-[540px]"><DialogHeader className="border-b border-[#e4eae5] p-6 text-left"><DialogTitle className="text-2xl font-black tracking-[-0.03em]">เพิ่มรายจ่ายประจำ</DialogTitle><DialogDescription>เพิ่มค่าใช้จ่ายที่เกิดซ้ำ เพื่อให้เงินคงเหลือในแต่ละเดือนแม่นยำขึ้น</DialogDescription></DialogHeader><div className="space-y-5 px-6"><Field label="หมวดรายจ่าย"><select className="field-input"><option>สาธารณูปโภค</option><option>การสื่อสาร</option><option>การเดินทาง</option><option>อาหารและของใช้</option><option>สมาชิกและแอป</option><option>อื่น ๆ</option></select></Field><Field label="ชื่อรายการ"><input className="field-input" defaultValue="ค่าที่จอดรถ" /></Field><div className="grid grid-cols-2 gap-4"><Field label="จำนวนเงินต่อเดือน"><input className="field-input" inputMode="decimal" defaultValue="1,200" /></Field><Field label="วันครบกำหนด"><input className="field-input" defaultValue="1 ของทุกเดือน" /></Field></div><label className="flex items-center gap-3 rounded-2xl bg-[#f2f6f1] p-4 text-sm font-bold"><input type="checkbox" className="size-4 accent-[#152d23]" /> ตัดชำระอัตโนมัติ</label></div><DialogFooter className="mt-2 border-t border-[#e4eae5] p-6"><DialogClose asChild><Button variant="outline" className="h-11 rounded-full px-5">ยกเลิก</Button></DialogClose><Button onClick={onSave} className="h-11 rounded-full bg-[#152d23] px-6 text-white">บันทึกรายจ่าย</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-sm font-bold"><span className="mb-2 block">{label}</span>{children}</label>; }
