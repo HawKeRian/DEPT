@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Bell, Bot, Building2, CalendarDays, CarFront, Check, ChevronRight,
   CircleDollarSign, Cloud, CloudOff, CreditCard, GraduationCap, Home, LayoutDashboard,
-  Lightbulb, LoaderCircle, Menu, MoreHorizontal, Plus, ReceiptText, Settings,
+  KeyRound, Lightbulb, LoaderCircle, LockKeyhole, Menu, MoreHorizontal, Plus, ReceiptText, Settings,
   Droplets, Repeat2, ShieldCheck, Smartphone, Sparkles, TrendingDown,
   WalletCards, Wifi, X, Zap,
 } from "lucide-react";
@@ -15,6 +15,7 @@ import {
   DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { createEncryptedEnvelope, encryptWithDataKey, unlockEnvelope, type EncryptedEnvelope } from "@/lib/e2ee";
 
 type View = "overview" | "debts" | "expenses" | "calendar" | "planner";
 type Debt = {
@@ -58,7 +59,9 @@ const money = new Intl.NumberFormat("th-TH", { maximumFractionDigits: 0 });
 const DEBTS_STORAGE_KEY = "tanglak-debts-v1";
 const EXPENSES_STORAGE_KEY = "tanglak-expenses-v1";
 const UPDATED_AT_STORAGE_KEY = "tanglak-updated-at-v1";
+const ENCRYPTED_STORAGE_KEY = "tanglak-e2ee-v1";
 type SyncStatus = "loading" | "syncing" | "synced" | "offline" | "error";
+type CryptoMode = "loading" | "setup" | "locked" | "ready" | "error";
 
 const expenseIconFromCategory = (category: string, name: string): Expense["icon"] => {
   if (name.includes("น้ำ")) return "water";
@@ -116,8 +119,10 @@ export default function HomePage() {
   const [expenses, setExpenses] = useState(initialExpenses);
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [hydrated, setHydrated] = useState(false);
-  const [cloudReady, setCloudReady] = useState(false);
+  const [cryptoMode, setCryptoMode] = useState<CryptoMode>("loading");
+  const [encryptedEnvelope, setEncryptedEnvelope] = useState<EncryptedEnvelope | null>(null);
+  const [envelopeNeedsSync, setEnvelopeNeedsSync] = useState(false);
+  const [dataKey, setDataKey] = useState<CryptoKey | null>(null);
   const [localUpdatedAt, setLocalUpdatedAt] = useState(0);
   const [lastSyncedAt, setLastSyncedAt] = useState(0);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading");
@@ -133,11 +138,12 @@ export default function HomePage() {
     let active = true;
     let localDebts = initialDebts;
     let localExpenses = initialExpenses;
-    let localTime = 0;
+    let localEnvelope: EncryptedEnvelope | null = null;
 
     try {
       const savedDebts = localStorage.getItem(DEBTS_STORAGE_KEY);
       const savedExpenses = localStorage.getItem(EXPENSES_STORAGE_KEY);
+      const savedEnvelope = localStorage.getItem(ENCRYPTED_STORAGE_KEY);
       if (savedDebts) {
         const parsed = JSON.parse(savedDebts);
         if (Array.isArray(parsed)) localDebts = parsed;
@@ -146,14 +152,9 @@ export default function HomePage() {
         const parsed = JSON.parse(savedExpenses);
         if (Array.isArray(parsed)) localExpenses = parsed;
       }
-      localTime = Number(localStorage.getItem(UPDATED_AT_STORAGE_KEY)) || 0;
-      setDebts(localDebts);
-      setExpenses(localExpenses);
-      setLocalUpdatedAt(localTime);
+      if (savedEnvelope) localEnvelope = JSON.parse(savedEnvelope) as EncryptedEnvelope;
     } catch {
-      setNotice("ไม่สามารถอ่านข้อมูลเดิมได้ จึงแสดงข้อมูลตัวอย่างแทน");
-    } finally {
-      setHydrated(true);
+      setNotice("ไม่สามารถอ่านสำเนาข้อมูลในเครื่องได้");
     }
 
     const now = new Date();
@@ -162,42 +163,60 @@ export default function HomePage() {
     setGreeting(hour < 12 ? "สวัสดีตอนเช้า" : hour < 17 ? "สวัสดีตอนบ่าย" : "สวัสดีตอนเย็น");
 
     const loadCloud = async () => {
-      if (!navigator.onLine) {
-        if (active) { setSyncStatus("offline"); setCloudReady(true); }
-        return;
-      }
-
       try {
         setSyncStatus("loading");
-        const response = await fetch("/api/finance-state", { cache: "no-store" });
-        if (!response.ok) throw new Error("cloud unavailable");
-        const payload = await response.json() as { state: { debts: Debt[]; expenses: Expense[]; updatedAt: string } | null };
-        const remoteTime = payload.state ? Date.parse(payload.state.updatedAt) || 0 : 0;
+        let remoteEnvelope: EncryptedEnvelope | null = null;
+        let legacyState: { debts: Debt[]; expenses: Expense[]; updatedAt: string } | null = null;
 
-        if (payload.state && remoteTime >= localTime) {
-          if (!active) return;
-          setDebts(payload.state.debts);
-          setExpenses(payload.state.expenses);
-          setLocalUpdatedAt(remoteTime);
-          setLastSyncedAt(remoteTime);
-        } else {
-          const uploadTime = localTime || Date.now();
-          const upload = await fetch("/api/finance-state", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ debts: localDebts, expenses: localExpenses, updatedAt: new Date(uploadTime).toISOString() }),
-          });
-          if (!upload.ok) throw new Error("cloud upload failed");
-          if (!active) return;
-          setLocalUpdatedAt(uploadTime);
-          setLastSyncedAt(uploadTime);
+        if (navigator.onLine) {
+          const response = await fetch("/api/finance-state", { cache: "no-store" });
+          if (!response.ok) throw new Error("cloud unavailable");
+          const payload = await response.json() as { encrypted: EncryptedEnvelope | null; state: typeof legacyState };
+          remoteEnvelope = payload.encrypted ?? null;
+          legacyState = payload.state ?? null;
         }
 
-        if (active) setSyncStatus("synced");
+        if (!active) return;
+        const localTime = localEnvelope ? Date.parse(localEnvelope.updatedAt) || 0 : 0;
+        const remoteTime = remoteEnvelope ? Date.parse(remoteEnvelope.updatedAt) || 0 : 0;
+        const chosenEnvelope = remoteTime >= localTime ? remoteEnvelope ?? localEnvelope : localEnvelope;
+
+        if (chosenEnvelope) {
+          setEncryptedEnvelope(chosenEnvelope);
+          setEnvelopeNeedsSync(!(remoteEnvelope && chosenEnvelope === remoteEnvelope));
+          localStorage.setItem(ENCRYPTED_STORAGE_KEY, JSON.stringify(chosenEnvelope));
+          localStorage.removeItem(DEBTS_STORAGE_KEY);
+          localStorage.removeItem(EXPENSES_STORAGE_KEY);
+          localStorage.removeItem(UPDATED_AT_STORAGE_KEY);
+          setDebts([]);
+          setExpenses([]);
+          setCryptoMode("locked");
+          setSyncStatus(navigator.onLine ? "synced" : "offline");
+          return;
+        }
+
+        if (legacyState) {
+          setDebts(legacyState.debts);
+          setExpenses(legacyState.expenses);
+        } else {
+          setDebts(localDebts);
+          setExpenses(localExpenses);
+        }
+        setCryptoMode("setup");
+        setSyncStatus(navigator.onLine ? "error" : "offline");
       } catch {
-        if (active) setSyncStatus(navigator.onLine ? "error" : "offline");
-      } finally {
-        if (active) setCloudReady(true);
+        if (!active) return;
+        if (localEnvelope) {
+          setEncryptedEnvelope(localEnvelope);
+          setDebts([]);
+          setExpenses([]);
+          setCryptoMode("locked");
+        } else {
+          setDebts(localDebts);
+          setExpenses(localExpenses);
+          setCryptoMode("setup");
+        }
+        setSyncStatus(navigator.onLine ? "error" : "offline");
       }
     };
     void loadCloud();
@@ -217,33 +236,31 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (hydrated) localStorage.setItem(DEBTS_STORAGE_KEY, JSON.stringify(debts));
-  }, [debts, hydrated]);
-
-  useEffect(() => {
-    if (hydrated) localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(expenses));
-  }, [expenses, hydrated]);
-
-  useEffect(() => {
-    if (hydrated && localUpdatedAt > 0) localStorage.setItem(UPDATED_AT_STORAGE_KEY, String(localUpdatedAt));
-  }, [hydrated, localUpdatedAt]);
-
-  useEffect(() => {
-    if (!hydrated || !cloudReady || localUpdatedAt <= lastSyncedAt) return;
-    if (!navigator.onLine) { setSyncStatus("offline"); return; }
+    if (cryptoMode !== "ready" || !dataKey || !encryptedEnvelope || localUpdatedAt <= lastSyncedAt) return;
 
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
       try {
         setSyncStatus("syncing");
+        const nextEnvelope = await encryptWithDataKey({ debts, expenses }, dataKey, encryptedEnvelope);
+        localStorage.setItem(ENCRYPTED_STORAGE_KEY, JSON.stringify(nextEnvelope));
+        if (!navigator.onLine) {
+          setEncryptedEnvelope(nextEnvelope);
+          setEnvelopeNeedsSync(true);
+          setLastSyncedAt(Date.parse(nextEnvelope.updatedAt));
+          setSyncStatus("offline");
+          return;
+        }
         const response = await fetch("/api/finance-state", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ debts, expenses, updatedAt: new Date(localUpdatedAt).toISOString() }),
+          body: JSON.stringify({ encrypted: nextEnvelope }),
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("sync failed");
-        setLastSyncedAt(localUpdatedAt);
+        setEncryptedEnvelope(nextEnvelope);
+        setEnvelopeNeedsSync(false);
+        setLastSyncedAt(Date.parse(nextEnvelope.updatedAt));
         setSyncStatus("synced");
       } catch (error) {
         if ((error as Error).name !== "AbortError") setSyncStatus(navigator.onLine ? "error" : "offline");
@@ -251,7 +268,36 @@ export default function HomePage() {
     }, 700);
 
     return () => { window.clearTimeout(timeout); controller.abort(); };
-  }, [cloudReady, debts, expenses, hydrated, lastSyncedAt, localUpdatedAt]);
+  }, [cryptoMode, dataKey, debts, encryptedEnvelope, expenses, lastSyncedAt, localUpdatedAt]);
+
+  const enableEncryption = async (passphrase: string) => {
+    const { envelope, dataKey: nextKey } = await createEncryptedEnvelope({ debts, expenses }, passphrase);
+    localStorage.setItem(ENCRYPTED_STORAGE_KEY, JSON.stringify(envelope));
+    localStorage.removeItem(DEBTS_STORAGE_KEY);
+    localStorage.removeItem(EXPENSES_STORAGE_KEY);
+    localStorage.removeItem(UPDATED_AT_STORAGE_KEY);
+    setEncryptedEnvelope(envelope);
+    setEnvelopeNeedsSync(true);
+    setDataKey(nextKey);
+    setLocalUpdatedAt(Date.parse(envelope.updatedAt));
+    setLastSyncedAt(0);
+    setCryptoMode("ready");
+    setSyncStatus(navigator.onLine ? "syncing" : "offline");
+  };
+
+  const unlockEncryption = async (passphrase: string) => {
+    if (!encryptedEnvelope) throw new Error("ไม่พบข้อมูลเข้ารหัส");
+    const unlocked = await unlockEnvelope<{ debts: Debt[]; expenses: Expense[] }>(encryptedEnvelope, passphrase);
+    if (!Array.isArray(unlocked.data.debts) || !Array.isArray(unlocked.data.expenses)) throw new Error("ข้อมูลไม่ถูกต้อง");
+    setDebts(unlocked.data.debts);
+    setExpenses(unlocked.data.expenses);
+    setDataKey(unlocked.dataKey);
+    const timestamp = Date.parse(encryptedEnvelope.updatedAt) || Date.now();
+    setLocalUpdatedAt(timestamp);
+    setLastSyncedAt(envelopeNeedsSync ? 0 : timestamp);
+    setCryptoMode("ready");
+    setSyncStatus(navigator.onLine ? "synced" : "offline");
+  };
 
   useEffect(() => {
     const modelContext = (document as Document & {
@@ -358,8 +404,8 @@ export default function HomePage() {
         <div className="mt-auto">
           <div className="mb-4 rounded-2xl bg-[#152d23] p-4 text-white">
             <div className="mb-3 flex size-9 items-center justify-center rounded-xl bg-[#d7ff71] text-[#152d23]"><ShieldCheck className="size-5" /></div>
-            <p className="text-sm font-semibold">สำรองข้อมูลบน Cloud</p>
-            <p className="mt-1 text-xs leading-5 text-white/60">เก็บสำเนาในเครื่องเพื่อใช้ออฟไลน์ และซิงก์กับบัญชีนี้เมื่อออนไลน์</p>
+            <p className="text-sm font-semibold">เข้ารหัสแบบ End-to-End</p>
+            <p className="mt-1 text-xs leading-5 text-white/60">ข้อมูลถูกเข้ารหัสบนอุปกรณ์ก่อนส่ง Cloud เซิร์ฟเวอร์อ่านยอดเงินไม่ได้</p>
           </div>
           <NavItem icon={<Settings />} label="ตั้งค่า" onClick={() => setNotice("หน้าตั้งค่าจะมาในเวอร์ชันถัดไป")} />
           <div className="mt-5 flex items-center gap-3 border-t border-[#dfe7e1] pt-5">
@@ -418,6 +464,7 @@ export default function HomePage() {
 
       <AddDebtDialog open={addOpen} item={editingDebt} onOpenChange={(open) => { setAddOpen(open); if (!open) setEditingDebt(null); }} onSave={saveDebt} onDelete={deleteDebt} />
       <AddExpenseDialog open={addExpenseOpen} item={editingExpense} onOpenChange={(open) => { setAddExpenseOpen(open); if (!open) setEditingExpense(null); }} onSave={saveExpense} onDelete={deleteExpense} />
+      <EncryptionGate mode={cryptoMode} onSetup={enableEncryption} onUnlock={unlockEncryption} />
       {notice && <div role="status" className="fixed bottom-24 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#152d23] px-5 py-3 text-sm font-medium text-white shadow-xl lg:bottom-8"><Check className="size-4 text-[#d7ff71]" />{notice}</div>}
     </main>
   );
@@ -436,6 +483,43 @@ function SyncBadge({ status }: { status: SyncStatus }) {
     error: { label: "เก็บในเครื่อง", icon: <CloudOff className="size-3.5" /> },
   }[status];
   return <span title={config.label} className={`flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-bold ${status === "synced" ? "border-[#cfe2d0] bg-[#eaf5e8] text-[#376146]" : "border-[#dfe7e1] bg-white text-[#6a7b72]"}`}>{config.icon}<span className="hidden sm:inline">{config.label}</span></span>;
+}
+
+function EncryptionGate({ mode, onSetup, onUnlock }: { mode: CryptoMode; onSetup: (passphrase: string) => Promise<void>; onUnlock: (passphrase: string) => Promise<void> }) {
+  const [passphrase, setPassphrase] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setPassphrase("");
+    setConfirmation("");
+    setError("");
+    setBusy(false);
+  }, [mode]);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError("");
+    if (passphrase.length < 12) { setError("รหัสปลดล็อกต้องมีอย่างน้อย 12 ตัวอักษร"); return; }
+    if (mode === "setup" && passphrase !== confirmation) { setError("รหัสยืนยันไม่ตรงกัน"); return; }
+    try {
+      setBusy(true);
+      if (mode === "setup") await onSetup(passphrase);
+      else await onUnlock(passphrase);
+    } catch {
+      setError(mode === "locked" ? "รหัสไม่ถูกต้อง หรือข้อมูลเข้ารหัสเสียหาย" : "ไม่สามารถเปิดการเข้ารหัสได้");
+      setBusy(false);
+    }
+  };
+
+  return <Dialog open={mode !== "ready"} onOpenChange={() => undefined}><DialogContent showCloseButton={false} className="overflow-hidden rounded-[28px] border-0 p-0 sm:max-w-[520px]">
+    {mode === "loading" ? <div className="grid min-h-64 place-items-center p-8 text-center"><div><LoaderCircle className="mx-auto size-8 animate-spin text-[#41604d]" /><p className="mt-4 font-bold">กำลังตรวจสอบข้อมูลที่เข้ารหัส…</p></div></div> :
+      <form onSubmit={submit}>
+        <div className="bg-[#152d23] p-6 text-white sm:p-8"><div className="grid size-12 place-items-center rounded-2xl bg-[#d7ff71] text-[#152d23]">{mode === "setup" ? <KeyRound className="size-6" /> : <LockKeyhole className="size-6" />}</div><DialogHeader className="mt-5 text-left"><DialogTitle className="text-2xl font-black tracking-[-0.03em]">{mode === "setup" ? "ปกป้องข้อมูลด้วย E2EE" : "ปลดล็อกข้อมูลของคุณ"}</DialogTitle><DialogDescription className="leading-6 text-white/65">{mode === "setup" ? "ตั้งรหัสสำหรับเข้ารหัสหนี้และรายจ่ายก่อนส่งขึ้น Cloud รหัสนี้จะไม่ถูกส่งไปยังเซิร์ฟเวอร์" : "ใส่รหัส E2EE เพื่อถอดรหัสข้อมูลบนอุปกรณ์นี้"}</DialogDescription></DialogHeader></div>
+        <div className="space-y-4 p-6 sm:p-8"><Field label={mode === "setup" ? "สร้างรหัสปลดล็อก" : "รหัสปลดล็อก"}><input className="field-input" type="password" autoComplete={mode === "setup" ? "new-password" : "current-password"} value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="อย่างน้อย 12 ตัวอักษร" autoFocus required /></Field>{mode === "setup" && <Field label="ยืนยันรหัสปลดล็อก"><input className="field-input" type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder="พิมพ์รหัสอีกครั้ง" required /></Field>}{error && <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p>}<div className="rounded-2xl bg-[#f1f5f0] p-4 text-xs leading-5 text-[#5d6e64]"><ShieldCheck className="mb-2 size-5 text-[#3d6d4d]" />{mode === "setup" ? "โปรดเก็บรหัสนี้ไว้ในที่ปลอดภัย หากลืมรหัส เราไม่สามารถดูหรือกู้ข้อมูลให้ได้" : "การถอดรหัสเกิดขึ้นบนอุปกรณ์นี้เท่านั้น กุญแจจะอยู่ในหน่วยความจำจนกว่าจะปิดหรือรีเฟรชหน้า"}</div><Button type="submit" disabled={busy} className="h-12 w-full rounded-full bg-[#152d23] text-white hover:bg-[#244538]">{busy && <LoaderCircle className="animate-spin" />}{mode === "setup" ? "เปิดใช้การเข้ารหัส" : "ปลดล็อกข้อมูล"}</Button></div>
+      </form>}
+  </DialogContent></Dialog>;
 }
 
 function NavItem({ active, icon, label, badge, onClick }: { active?: boolean; icon: React.ReactNode; label: string; badge?: string; onClick: () => void }) {
