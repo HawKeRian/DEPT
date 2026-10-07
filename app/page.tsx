@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Bell, Bot, Building2, CalendarDays, CarFront, Check, ChevronRight,
-  CircleDollarSign, CreditCard, GraduationCap, Home, LayoutDashboard,
-  Lightbulb, Menu, MoreHorizontal, Plus, ReceiptText, Settings,
+  CircleDollarSign, Cloud, CloudOff, CreditCard, GraduationCap, Home, LayoutDashboard,
+  Lightbulb, LoaderCircle, Menu, MoreHorizontal, Plus, ReceiptText, Settings,
   Droplets, Repeat2, ShieldCheck, Smartphone, Sparkles, TrendingDown,
   WalletCards, Wifi, X, Zap,
 } from "lucide-react";
@@ -57,6 +57,8 @@ const initialExpenses: Expense[] = [
 const money = new Intl.NumberFormat("th-TH", { maximumFractionDigits: 0 });
 const DEBTS_STORAGE_KEY = "tanglak-debts-v1";
 const EXPENSES_STORAGE_KEY = "tanglak-expenses-v1";
+const UPDATED_AT_STORAGE_KEY = "tanglak-updated-at-v1";
+type SyncStatus = "loading" | "syncing" | "synced" | "offline" | "error";
 
 const expenseIconFromCategory = (category: string, name: string): Expense["icon"] => {
   if (name.includes("น้ำ")) return "water";
@@ -115,6 +117,10 @@ export default function HomePage() {
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [cloudReady, setCloudReady] = useState(false);
+  const [localUpdatedAt, setLocalUpdatedAt] = useState(0);
+  const [lastSyncedAt, setLastSyncedAt] = useState(0);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading");
   const [todayLabel, setTodayLabel] = useState("วันนี้");
   const [greeting, setGreeting] = useState("สวัสดี");
   const [notice, setNotice] = useState("");
@@ -124,17 +130,26 @@ export default function HomePage() {
   const monthlyExpenseTotal = useMemo(() => expenses.reduce((sum, item) => sum + item.amount, 0), [expenses]);
 
   useEffect(() => {
+    let active = true;
+    let localDebts = initialDebts;
+    let localExpenses = initialExpenses;
+    let localTime = 0;
+
     try {
       const savedDebts = localStorage.getItem(DEBTS_STORAGE_KEY);
       const savedExpenses = localStorage.getItem(EXPENSES_STORAGE_KEY);
       if (savedDebts) {
         const parsed = JSON.parse(savedDebts);
-        if (Array.isArray(parsed)) setDebts(parsed);
+        if (Array.isArray(parsed)) localDebts = parsed;
       }
       if (savedExpenses) {
         const parsed = JSON.parse(savedExpenses);
-        if (Array.isArray(parsed)) setExpenses(parsed);
+        if (Array.isArray(parsed)) localExpenses = parsed;
       }
+      localTime = Number(localStorage.getItem(UPDATED_AT_STORAGE_KEY)) || 0;
+      setDebts(localDebts);
+      setExpenses(localExpenses);
+      setLocalUpdatedAt(localTime);
     } catch {
       setNotice("ไม่สามารถอ่านข้อมูลเดิมได้ จึงแสดงข้อมูลตัวอย่างแทน");
     } finally {
@@ -145,6 +160,60 @@ export default function HomePage() {
     setTodayLabel(new Intl.DateTimeFormat("th-TH", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(now));
     const hour = now.getHours();
     setGreeting(hour < 12 ? "สวัสดีตอนเช้า" : hour < 17 ? "สวัสดีตอนบ่าย" : "สวัสดีตอนเย็น");
+
+    const loadCloud = async () => {
+      if (!navigator.onLine) {
+        if (active) { setSyncStatus("offline"); setCloudReady(true); }
+        return;
+      }
+
+      try {
+        setSyncStatus("loading");
+        const response = await fetch("/api/finance-state", { cache: "no-store" });
+        if (!response.ok) throw new Error("cloud unavailable");
+        const payload = await response.json() as { state: { debts: Debt[]; expenses: Expense[]; updatedAt: string } | null };
+        const remoteTime = payload.state ? Date.parse(payload.state.updatedAt) || 0 : 0;
+
+        if (payload.state && remoteTime >= localTime) {
+          if (!active) return;
+          setDebts(payload.state.debts);
+          setExpenses(payload.state.expenses);
+          setLocalUpdatedAt(remoteTime);
+          setLastSyncedAt(remoteTime);
+        } else {
+          const uploadTime = localTime || Date.now();
+          const upload = await fetch("/api/finance-state", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ debts: localDebts, expenses: localExpenses, updatedAt: new Date(uploadTime).toISOString() }),
+          });
+          if (!upload.ok) throw new Error("cloud upload failed");
+          if (!active) return;
+          setLocalUpdatedAt(uploadTime);
+          setLastSyncedAt(uploadTime);
+        }
+
+        if (active) setSyncStatus("synced");
+      } catch {
+        if (active) setSyncStatus(navigator.onLine ? "error" : "offline");
+      } finally {
+        if (active) setCloudReady(true);
+      }
+    };
+    void loadCloud();
+
+    const handleOnline = () => {
+      setSyncStatus("syncing");
+      setLocalUpdatedAt(Date.now());
+    };
+    const handleOffline = () => setSyncStatus("offline");
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      active = false;
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, []);
 
   useEffect(() => {
@@ -154,6 +223,35 @@ export default function HomePage() {
   useEffect(() => {
     if (hydrated) localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(expenses));
   }, [expenses, hydrated]);
+
+  useEffect(() => {
+    if (hydrated && localUpdatedAt > 0) localStorage.setItem(UPDATED_AT_STORAGE_KEY, String(localUpdatedAt));
+  }, [hydrated, localUpdatedAt]);
+
+  useEffect(() => {
+    if (!hydrated || !cloudReady || localUpdatedAt <= lastSyncedAt) return;
+    if (!navigator.onLine) { setSyncStatus("offline"); return; }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      try {
+        setSyncStatus("syncing");
+        const response = await fetch("/api/finance-state", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ debts, expenses, updatedAt: new Date(localUpdatedAt).toISOString() }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("sync failed");
+        setLastSyncedAt(localUpdatedAt);
+        setSyncStatus("synced");
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") setSyncStatus(navigator.onLine ? "error" : "offline");
+      }
+    }, 700);
+
+    return () => { window.clearTimeout(timeout); controller.abort(); };
+  }, [cloudReady, debts, expenses, hydrated, lastSyncedAt, localUpdatedAt]);
 
   useEffect(() => {
     const modelContext = (document as Document & {
@@ -204,10 +302,13 @@ export default function HomePage() {
     return () => lifecycle.abort();
   }, [debts.length, expenses.length, monthlyExpenseTotal, monthlyTotal, totalBalance]);
 
+  const markChanged = () => setLocalUpdatedAt(Date.now());
+
   const saveDebt = (debt: Debt) => {
     setDebts((current) => current.some((item) => item.id === debt.id)
       ? current.map((item) => item.id === debt.id ? debt : item)
       : [...current, debt]);
+    markChanged();
     setAddOpen(false);
     setEditingDebt(null);
     setNotice(editingDebt ? "บันทึกการแก้ไขหนี้แล้ว" : "เพิ่มรายการหนี้เรียบร้อยแล้ว");
@@ -218,6 +319,7 @@ export default function HomePage() {
     setExpenses((current) => current.some((item) => item.id === expense.id)
       ? current.map((item) => item.id === expense.id ? expense : item)
       : [...current, expense]);
+    markChanged();
     setAddExpenseOpen(false);
     setEditingExpense(null);
     setNotice(editingExpense ? "บันทึกการแก้ไขรายจ่ายแล้ว" : "เพิ่มรายจ่ายประจำเรียบร้อยแล้ว");
@@ -227,6 +329,7 @@ export default function HomePage() {
   const deleteDebt = (id: number) => {
     if (!window.confirm("ลบรายการหนี้นี้ใช่ไหม?")) return;
     setDebts((current) => current.filter((item) => item.id !== id));
+    markChanged();
     setAddOpen(false);
     setEditingDebt(null);
     setNotice("ลบรายการหนี้แล้ว");
@@ -235,6 +338,7 @@ export default function HomePage() {
   const deleteExpense = (id: number) => {
     if (!window.confirm("ลบรายจ่ายประจำนี้ใช่ไหม?")) return;
     setExpenses((current) => current.filter((item) => item.id !== id));
+    markChanged();
     setAddExpenseOpen(false);
     setEditingExpense(null);
     setNotice("ลบรายจ่ายแล้ว");
@@ -254,8 +358,8 @@ export default function HomePage() {
         <div className="mt-auto">
           <div className="mb-4 rounded-2xl bg-[#152d23] p-4 text-white">
             <div className="mb-3 flex size-9 items-center justify-center rounded-xl bg-[#d7ff71] text-[#152d23]"><ShieldCheck className="size-5" /></div>
-            <p className="text-sm font-semibold">ข้อมูลอยู่ในเครื่อง</p>
-            <p className="mt-1 text-xs leading-5 text-white/60">บันทึกในเบราว์เซอร์เครื่องนี้ และไม่ส่งข้อมูลการเงินไปที่อื่น</p>
+            <p className="text-sm font-semibold">สำรองข้อมูลบน Cloud</p>
+            <p className="mt-1 text-xs leading-5 text-white/60">เก็บสำเนาในเครื่องเพื่อใช้ออฟไลน์ และซิงก์กับบัญชีนี้เมื่อออนไลน์</p>
           </div>
           <NavItem icon={<Settings />} label="ตั้งค่า" onClick={() => setNotice("หน้าตั้งค่าจะมาในเวอร์ชันถัดไป")} />
           <div className="mt-5 flex items-center gap-3 border-t border-[#dfe7e1] pt-5">
@@ -271,6 +375,7 @@ export default function HomePage() {
           <button className="mr-3 rounded-xl p-2 lg:hidden" onClick={() => setMenuOpen(!menuOpen)} aria-label="เปิดเมนู"><Menu className="size-5" /></button>
           <div><p className="text-xs font-medium text-[#718078]">{todayLabel}</p><h1 className="text-lg font-bold tracking-[-0.02em]">{greeting}, กิตติพงษ์</h1></div>
           <div className="ml-auto flex items-center gap-2">
+            <SyncBadge status={syncStatus} />
             <button className="relative flex size-10 items-center justify-center rounded-full border border-[#dfe7e1] bg-white" aria-label="การแจ้งเตือน"><Bell className="size-[18px]" /><span className="absolute right-2 top-2 size-2 rounded-full bg-[#ff7657] ring-2 ring-white" /></button>
             <Button onClick={() => {
               if (view === "expenses") { setEditingExpense(null); setAddExpenseOpen(true); }
@@ -320,6 +425,17 @@ export default function HomePage() {
 
 function Brand() {
   return <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-[14px] bg-[#152d23] text-[#d7ff71]"><TrendingDown className="size-5" /></div><div><p className="text-xl font-black tracking-[-0.04em]">ตั้งหลัก</p><p className="text-[11px] font-medium text-[#718078]">DEBT PLANNER</p></div></div>;
+}
+
+function SyncBadge({ status }: { status: SyncStatus }) {
+  const config = {
+    loading: { label: "กำลังโหลด", icon: <LoaderCircle className="size-3.5 animate-spin" /> },
+    syncing: { label: "กำลังซิงก์", icon: <LoaderCircle className="size-3.5 animate-spin" /> },
+    synced: { label: "ซิงก์แล้ว", icon: <Cloud className="size-3.5" /> },
+    offline: { label: "ออฟไลน์", icon: <CloudOff className="size-3.5" /> },
+    error: { label: "เก็บในเครื่อง", icon: <CloudOff className="size-3.5" /> },
+  }[status];
+  return <span title={config.label} className={`flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-bold ${status === "synced" ? "border-[#cfe2d0] bg-[#eaf5e8] text-[#376146]" : "border-[#dfe7e1] bg-white text-[#6a7b72]"}`}>{config.icon}<span className="hidden sm:inline">{config.label}</span></span>;
 }
 
 function NavItem({ active, icon, label, badge, onClick }: { active?: boolean; icon: React.ReactNode; label: string; badge?: string; onClick: () => void }) {
