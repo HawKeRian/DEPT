@@ -6,6 +6,8 @@ import { getChatGPTUser } from "../../chatgpt-auth";
 type FinancePayload = {
   debts?: unknown;
   expenses?: unknown;
+  incomes?: unknown;
+  accounts?: unknown;
   updatedAt?: unknown;
 };
 
@@ -30,6 +32,8 @@ export async function GET() {
     state: {
       debts: JSON.parse(row.debtsJson),
       expenses: JSON.parse(row.expensesJson),
+      incomes: JSON.parse(row.incomesJson),
+      accounts: JSON.parse(row.accountsJson),
       updatedAt: row.updatedAt,
     },
   });
@@ -40,7 +44,7 @@ export async function PUT(request: Request) {
   if (!user) return unauthorized();
 
   const payload = (await request.json()) as FinancePayload;
-  if (!validRecords(payload.debts, 250) || !validRecords(payload.expenses, 500)) {
+  if (!validRecords(payload.debts, 250) || !validRecords(payload.expenses, 500) || !validRecords(payload.incomes, 500) || !validRecords(payload.accounts, 100)) {
     return Response.json({ error: "รูปแบบข้อมูลไม่ถูกต้องหรือมีขนาดใหญ่เกินไป" }, { status: 400 });
   }
 
@@ -50,6 +54,8 @@ export async function PUT(request: Request) {
     userId: user.userId,
     debtsJson: JSON.stringify(payload.debts),
     expensesJson: JSON.stringify(payload.expenses),
+    incomesJson: JSON.stringify(payload.incomes),
+    accountsJson: JSON.stringify(payload.accounts),
     updatedAt,
   };
 
@@ -59,6 +65,8 @@ export async function PUT(request: Request) {
     set: {
       debtsJson: values.debtsJson,
       expensesJson: values.expensesJson,
+      incomesJson: values.incomesJson,
+      accountsJson: values.accountsJson,
       updatedAt: values.updatedAt,
     },
   });

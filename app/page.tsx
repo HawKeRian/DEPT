@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bell, Bot, Building2, CalendarDays, CarFront, Check, ChevronRight,
+  ArrowDownToLine, Bell, Bot, Building2, CalendarDays, CarFront, Check, ChevronRight,
   CircleDollarSign, Cloud, CloudOff, CreditCard, GraduationCap, Home, LayoutDashboard,
-  Lightbulb, LoaderCircle, Menu, MoreHorizontal, Plus, ReceiptText, Settings,
+  Landmark, Lightbulb, LoaderCircle, Menu, MoreHorizontal, PiggyBank, Plus, ReceiptText, Settings,
   Droplets, Repeat2, ShieldCheck, Smartphone, Sparkles, TrendingDown,
   WalletCards, Wifi, X, Zap,
 } from "lucide-react";
@@ -16,7 +16,9 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 
-type View = "overview" | "debts" | "expenses" | "calendar" | "planner";
+type View = "overview" | "debts" | "expenses" | "incomes" | "savings" | "calendar" | "planner";
+type Period = "daily" | "weekly" | "monthly";
+type MoneyCategory = "หนี้สิน" | "ชีวิตประจำวัน" | "การลงทุน" | "อีเวนต์" | "อื่น ๆ";
 type Debt = {
   id: number;
   name: string;
@@ -31,11 +33,29 @@ type Debt = {
 type Expense = {
   id: number;
   name: string;
-  category: string;
+  category: MoneyCategory;
   amount: number;
   due: string;
   icon: "electric" | "water" | "phone" | "internet" | "food" | "subscription";
   autoPay?: boolean;
+};
+
+type Income = {
+  id: number;
+  name: string;
+  category: MoneyCategory;
+  amount: number;
+  due: string;
+  recurring?: boolean;
+};
+
+type SavingsAccount = {
+  id: number;
+  name: string;
+  institution: string;
+  balance: number;
+  target: number;
+  color: "lime" | "blue" | "orange" | "purple";
 };
 
 const initialDebts: Debt[] = [
@@ -46,17 +66,29 @@ const initialDebts: Debt[] = [
 ];
 
 const initialExpenses: Expense[] = [
-  { id: 1, name: "ค่าไฟ", category: "สาธารณูปโภค", amount: 1850, due: "10 ต.ค.", icon: "electric" },
-  { id: 2, name: "ค่าน้ำ", category: "สาธารณูปโภค", amount: 320, due: "12 ต.ค.", icon: "water" },
-  { id: 3, name: "ค่าโทรศัพท์", category: "การสื่อสาร", amount: 699, due: "15 ต.ค.", icon: "phone", autoPay: true },
-  { id: 4, name: "อินเทอร์เน็ตบ้าน", category: "การสื่อสาร", amount: 599, due: "20 ต.ค.", icon: "internet", autoPay: true },
+  { id: 1, name: "ค่าไฟ", category: "ชีวิตประจำวัน", amount: 1850, due: "10 ต.ค.", icon: "electric" },
+  { id: 2, name: "ค่าน้ำ", category: "ชีวิตประจำวัน", amount: 320, due: "12 ต.ค.", icon: "water" },
+  { id: 3, name: "ค่าโทรศัพท์", category: "ชีวิตประจำวัน", amount: 699, due: "15 ต.ค.", icon: "phone", autoPay: true },
+  { id: 4, name: "อินเทอร์เน็ตบ้าน", category: "ชีวิตประจำวัน", amount: 599, due: "20 ต.ค.", icon: "internet", autoPay: true },
   { id: 5, name: "ค่าอาหารและของใช้", category: "ชีวิตประจำวัน", amount: 9000, due: "งบทั้งเดือน", icon: "food" },
-  { id: 6, name: "บริการรายเดือน", category: "สมาชิกและแอป", amount: 499, due: "25 ต.ค.", icon: "subscription", autoPay: true },
+  { id: 6, name: "บริการรายเดือน", category: "อื่น ๆ", amount: 499, due: "25 ต.ค.", icon: "subscription", autoPay: true },
+];
+
+const initialIncomes: Income[] = [
+  { id: 1, name: "เงินเดือน", category: "อื่น ๆ", amount: 68000, due: "25 ของทุกเดือน", recurring: true },
+  { id: 2, name: "รายได้เสริม", category: "อื่น ๆ", amount: 6000, due: "สิ้นเดือน" },
+];
+
+const initialAccounts: SavingsAccount[] = [
+  { id: 1, name: "เงินสำรองฉุกเฉิน", institution: "K PLUS", balance: 82000, target: 180000, color: "lime" },
+  { id: 2, name: "เที่ยวปลายปี", institution: "SCB EASY", balance: 24500, target: 60000, color: "blue" },
 ];
 
 const money = new Intl.NumberFormat("th-TH", { maximumFractionDigits: 0 });
 const DEBTS_STORAGE_KEY = "tanglak-debts-v1";
 const EXPENSES_STORAGE_KEY = "tanglak-expenses-v1";
+const INCOMES_STORAGE_KEY = "tanglak-incomes-v1";
+const ACCOUNTS_STORAGE_KEY = "tanglak-accounts-v1";
 const UPDATED_AT_STORAGE_KEY = "tanglak-updated-at-v1";
 type SyncStatus = "loading" | "syncing" | "synced" | "offline" | "error";
 
@@ -64,9 +96,8 @@ const expenseIconFromCategory = (category: string, name: string): Expense["icon"
   if (name.includes("น้ำ")) return "water";
   if (name.includes("ไฟ")) return "electric";
   if (name.includes("อินเทอร์เน็ต") || name.includes("เน็ต")) return "internet";
-  if (category === "การสื่อสาร") return "phone";
-  if (category === "อาหารและของใช้") return "food";
-  if (category === "สมาชิกและแอป") return "subscription";
+  if (name.includes("โทรศัพท์")) return "phone";
+  if (name.includes("อาหาร") || name.includes("ของใช้")) return "food";
   return "subscription";
 };
 
@@ -109,13 +140,20 @@ const toneClasses = {
 
 export default function HomePage() {
   const [view, setView] = useState<View>("overview");
+  const [period, setPeriod] = useState<Period>("monthly");
   const [addOpen, setAddOpen] = useState(false);
   const [addExpenseOpen, setAddExpenseOpen] = useState(false);
+  const [addIncomeOpen, setAddIncomeOpen] = useState(false);
+  const [addAccountOpen, setAddAccountOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [debts, setDebts] = useState(initialDebts);
   const [expenses, setExpenses] = useState(initialExpenses);
+  const [incomes, setIncomes] = useState(initialIncomes);
+  const [accounts, setAccounts] = useState(initialAccounts);
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editingIncome, setEditingIncome] = useState<Income | null>(null);
+  const [editingAccount, setEditingAccount] = useState<SavingsAccount | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [cloudReady, setCloudReady] = useState(false);
   const [localUpdatedAt, setLocalUpdatedAt] = useState(0);
@@ -128,16 +166,22 @@ export default function HomePage() {
   const monthlyTotal = useMemo(() => debts.reduce((sum, item) => sum + item.monthly, 0), [debts]);
   const totalBalance = useMemo(() => debts.reduce((sum, item) => sum + item.balance, 0), [debts]);
   const monthlyExpenseTotal = useMemo(() => expenses.reduce((sum, item) => sum + item.amount, 0), [expenses]);
+  const monthlyIncomeTotal = useMemo(() => incomes.reduce((sum, item) => sum + item.amount, 0), [incomes]);
+  const savingsTotal = useMemo(() => accounts.reduce((sum, item) => sum + item.balance, 0), [accounts]);
 
   useEffect(() => {
     let active = true;
     let localDebts = initialDebts;
     let localExpenses = initialExpenses;
+    let localIncomes = initialIncomes;
+    let localAccounts = initialAccounts;
     let localTime = 0;
 
     try {
       const savedDebts = localStorage.getItem(DEBTS_STORAGE_KEY);
       const savedExpenses = localStorage.getItem(EXPENSES_STORAGE_KEY);
+      const savedIncomes = localStorage.getItem(INCOMES_STORAGE_KEY);
+      const savedAccounts = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
       if (savedDebts) {
         const parsed = JSON.parse(savedDebts);
         if (Array.isArray(parsed)) localDebts = parsed;
@@ -146,9 +190,19 @@ export default function HomePage() {
         const parsed = JSON.parse(savedExpenses);
         if (Array.isArray(parsed)) localExpenses = parsed;
       }
+      if (savedIncomes) {
+        const parsed = JSON.parse(savedIncomes);
+        if (Array.isArray(parsed)) localIncomes = parsed;
+      }
+      if (savedAccounts) {
+        const parsed = JSON.parse(savedAccounts);
+        if (Array.isArray(parsed)) localAccounts = parsed;
+      }
       localTime = Number(localStorage.getItem(UPDATED_AT_STORAGE_KEY)) || 0;
       setDebts(localDebts);
       setExpenses(localExpenses);
+      setIncomes(localIncomes);
+      setAccounts(localAccounts);
       setLocalUpdatedAt(localTime);
     } catch {
       setNotice("ไม่สามารถอ่านข้อมูลเดิมได้ จึงแสดงข้อมูลตัวอย่างแทน");
@@ -171,13 +225,15 @@ export default function HomePage() {
         setSyncStatus("loading");
         const response = await fetch("/api/finance-state", { cache: "no-store" });
         if (!response.ok) throw new Error("cloud unavailable");
-        const payload = await response.json() as { state: { debts: Debt[]; expenses: Expense[]; updatedAt: string } | null };
+        const payload = await response.json() as { state: { debts: Debt[]; expenses: Expense[]; incomes?: Income[]; accounts?: SavingsAccount[]; updatedAt: string } | null };
         const remoteTime = payload.state ? Date.parse(payload.state.updatedAt) || 0 : 0;
 
         if (payload.state && remoteTime >= localTime) {
           if (!active) return;
           setDebts(payload.state.debts);
           setExpenses(payload.state.expenses);
+          setIncomes(payload.state.incomes?.length ? payload.state.incomes : localIncomes);
+          setAccounts(payload.state.accounts?.length ? payload.state.accounts : localAccounts);
           setLocalUpdatedAt(remoteTime);
           setLastSyncedAt(remoteTime);
         } else {
@@ -185,7 +241,7 @@ export default function HomePage() {
           const upload = await fetch("/api/finance-state", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ debts: localDebts, expenses: localExpenses, updatedAt: new Date(uploadTime).toISOString() }),
+            body: JSON.stringify({ debts: localDebts, expenses: localExpenses, incomes: localIncomes, accounts: localAccounts, updatedAt: new Date(uploadTime).toISOString() }),
           });
           if (!upload.ok) throw new Error("cloud upload failed");
           if (!active) return;
@@ -225,6 +281,14 @@ export default function HomePage() {
   }, [expenses, hydrated]);
 
   useEffect(() => {
+    if (hydrated) localStorage.setItem(INCOMES_STORAGE_KEY, JSON.stringify(incomes));
+  }, [incomes, hydrated]);
+
+  useEffect(() => {
+    if (hydrated) localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
+  }, [accounts, hydrated]);
+
+  useEffect(() => {
     if (hydrated && localUpdatedAt > 0) localStorage.setItem(UPDATED_AT_STORAGE_KEY, String(localUpdatedAt));
   }, [hydrated, localUpdatedAt]);
 
@@ -239,7 +303,7 @@ export default function HomePage() {
         const response = await fetch("/api/finance-state", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ debts, expenses, updatedAt: new Date(localUpdatedAt).toISOString() }),
+          body: JSON.stringify({ debts, expenses, incomes, accounts, updatedAt: new Date(localUpdatedAt).toISOString() }),
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("sync failed");
@@ -251,7 +315,7 @@ export default function HomePage() {
     }, 700);
 
     return () => { window.clearTimeout(timeout); controller.abort(); };
-  }, [cloudReady, debts, expenses, hydrated, lastSyncedAt, localUpdatedAt]);
+  }, [accounts, cloudReady, debts, expenses, hydrated, incomes, lastSyncedAt, localUpdatedAt]);
 
   useEffect(() => {
     const modelContext = (document as Document & {
@@ -269,7 +333,7 @@ export default function HomePage() {
         annotations: { readOnlyHint: true, untrustedContentHint: false },
         execute: (input: unknown) => {
           requireEmptyInput(input);
-          return { totalBalance, monthlyTotal, monthlyExpenseTotal, debtCount: debts.length, expenseCount: expenses.length, nextDue: "บ้าน วันที่ 5 ต.ค." };
+          return { totalBalance, monthlyTotal, monthlyExpenseTotal, monthlyIncomeTotal, savingsTotal, debtCount: debts.length, expenseCount: expenses.length, incomeCount: incomes.length, accountCount: accounts.length, nextDue: "บ้าน วันที่ 5 ต.ค." };
         },
       }, { signal: lifecycle.signal });
       await modelContext.registerTool({
@@ -300,7 +364,7 @@ export default function HomePage() {
     };
     void register().catch(() => undefined);
     return () => lifecycle.abort();
-  }, [debts.length, expenses.length, monthlyExpenseTotal, monthlyTotal, totalBalance]);
+  }, [accounts.length, debts.length, expenses.length, incomes.length, monthlyExpenseTotal, monthlyIncomeTotal, monthlyTotal, savingsTotal, totalBalance]);
 
   const markChanged = () => setLocalUpdatedAt(Date.now());
 
@@ -326,6 +390,28 @@ export default function HomePage() {
     setTimeout(() => setNotice(""), 2800);
   };
 
+  const saveIncome = (income: Income) => {
+    setIncomes((current) => current.some((item) => item.id === income.id)
+      ? current.map((item) => item.id === income.id ? income : item)
+      : [...current, income]);
+    markChanged();
+    setAddIncomeOpen(false);
+    setEditingIncome(null);
+    setNotice(editingIncome ? "บันทึกการแก้ไขรายรับแล้ว" : "เพิ่มรายรับเรียบร้อยแล้ว");
+    setTimeout(() => setNotice(""), 2800);
+  };
+
+  const saveAccount = (account: SavingsAccount) => {
+    setAccounts((current) => current.some((item) => item.id === account.id)
+      ? current.map((item) => item.id === account.id ? account : item)
+      : [...current, account]);
+    markChanged();
+    setAddAccountOpen(false);
+    setEditingAccount(null);
+    setNotice(editingAccount ? "อัปเดตบัญชีเงินเก็บแล้ว" : "เพิ่มบัญชีเงินเก็บแล้ว");
+    setTimeout(() => setNotice(""), 2800);
+  };
+
   const deleteDebt = (id: number) => {
     if (!window.confirm("ลบรายการหนี้นี้ใช่ไหม?")) return;
     setDebts((current) => current.filter((item) => item.id !== id));
@@ -344,6 +430,24 @@ export default function HomePage() {
     setNotice("ลบรายจ่ายแล้ว");
   };
 
+  const deleteIncome = (id: number) => {
+    if (!window.confirm("ลบรายการรายรับนี้ใช่ไหม?")) return;
+    setIncomes((current) => current.filter((item) => item.id !== id));
+    markChanged();
+    setAddIncomeOpen(false);
+    setEditingIncome(null);
+    setNotice("ลบรายรับแล้ว");
+  };
+
+  const deleteAccount = (id: number) => {
+    if (!window.confirm("ลบบัญชีเงินเก็บนี้ใช่ไหม?")) return;
+    setAccounts((current) => current.filter((item) => item.id !== id));
+    markChanged();
+    setAddAccountOpen(false);
+    setEditingAccount(null);
+    setNotice("ลบบัญชีเงินเก็บแล้ว");
+  };
+
   return (
     <main className="min-h-screen bg-[#f4f7f3] text-[#14231c]">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[236px] flex-col border-r border-[#dfe7e1] bg-[#f9fbf8] px-4 py-6 lg:flex">
@@ -351,7 +455,9 @@ export default function HomePage() {
         <nav className="mt-10 space-y-1" aria-label="เมนูหลัก">
           <NavItem active={view === "overview"} icon={<LayoutDashboard />} label="ภาพรวม" onClick={() => setView("overview")} />
           <NavItem active={view === "debts"} icon={<WalletCards />} label="หนี้ของฉัน" badge={String(debts.length)} onClick={() => setView("debts")} />
+          <NavItem active={view === "incomes"} icon={<ArrowDownToLine />} label="รายรับ" badge={String(incomes.length)} onClick={() => setView("incomes")} />
           <NavItem active={view === "expenses"} icon={<ReceiptText />} label="รายจ่ายประจำ" badge={String(expenses.length)} onClick={() => setView("expenses")} />
+          <NavItem active={view === "savings"} icon={<PiggyBank />} label="บัญชีเงินเก็บ" badge={String(accounts.length)} onClick={() => setView("savings")} />
           <NavItem active={view === "calendar"} icon={<CalendarDays />} label="ปฏิทินชำระ" onClick={() => setView("calendar")} />
           <NavItem active={view === "planner"} icon={<Sparkles />} label="AI วางแผน" onClick={() => setView("planner")} />
         </nav>
@@ -379,8 +485,10 @@ export default function HomePage() {
             <button className="relative flex size-10 items-center justify-center rounded-full border border-[#dfe7e1] bg-white" aria-label="การแจ้งเตือน"><Bell className="size-[18px]" /><span className="absolute right-2 top-2 size-2 rounded-full bg-[#ff7657] ring-2 ring-white" /></button>
             <Button onClick={() => {
               if (view === "expenses") { setEditingExpense(null); setAddExpenseOpen(true); }
+              else if (view === "incomes") { setEditingIncome(null); setAddIncomeOpen(true); }
+              else if (view === "savings") { setEditingAccount(null); setAddAccountOpen(true); }
               else { setEditingDebt(null); setAddOpen(true); }
-            }} className="h-10 rounded-full bg-[#152d23] px-4 text-white hover:bg-[#244538]"><Plus /> <span className="hidden sm:inline">{view === "expenses" ? "เพิ่มรายจ่าย" : "เพิ่มรายการหนี้"}</span></Button>
+            }} className="h-10 rounded-full bg-[#152d23] px-4 text-white hover:bg-[#244538]"><Plus /> <span className="hidden sm:inline">{view === "expenses" ? "เพิ่มรายจ่าย" : view === "incomes" ? "เพิ่มรายรับ" : view === "savings" ? "เพิ่มบัญชี" : "เพิ่มรายการหนี้"}</span></Button>
           </div>
         </header>
 
@@ -391,7 +499,9 @@ export default function HomePage() {
               <nav className="mt-10 space-y-2">
                 <NavItem active={view === "overview"} icon={<LayoutDashboard />} label="ภาพรวม" onClick={() => { setView("overview"); setMenuOpen(false); }} />
                 <NavItem active={view === "debts"} icon={<WalletCards />} label="หนี้ของฉัน" onClick={() => { setView("debts"); setMenuOpen(false); }} />
+                <NavItem active={view === "incomes"} icon={<ArrowDownToLine />} label="รายรับ" onClick={() => { setView("incomes"); setMenuOpen(false); }} />
                 <NavItem active={view === "expenses"} icon={<ReceiptText />} label="รายจ่ายประจำ" onClick={() => { setView("expenses"); setMenuOpen(false); }} />
+                <NavItem active={view === "savings"} icon={<PiggyBank />} label="บัญชีเงินเก็บ" onClick={() => { setView("savings"); setMenuOpen(false); }} />
                 <NavItem active={view === "calendar"} icon={<CalendarDays />} label="ปฏิทินชำระ" onClick={() => { setView("calendar"); setMenuOpen(false); }} />
                 <NavItem active={view === "planner"} icon={<Sparkles />} label="AI วางแผน" onClick={() => { setView("planner"); setMenuOpen(false); }} />
               </nav>
@@ -400,9 +510,12 @@ export default function HomePage() {
         )}
 
         <div className="mx-auto max-w-[1440px] p-4 sm:p-7 lg:p-10">
-          {view === "overview" && <Overview debts={debts} expenses={expenses} monthlyTotal={monthlyTotal} monthlyExpenseTotal={monthlyExpenseTotal} totalBalance={totalBalance} onViewAll={() => setView("debts")} onViewExpenses={() => setView("expenses")} onPlanner={() => setView("planner")} />}
+          <div className="mb-6 flex justify-end"><PeriodSwitch period={period} onChange={setPeriod} /></div>
+          {view === "overview" && <Overview debts={debts} expenses={expenses} incomes={incomes} accounts={accounts} period={period} monthlyTotal={monthlyTotal} monthlyExpenseTotal={monthlyExpenseTotal} monthlyIncomeTotal={monthlyIncomeTotal} totalBalance={totalBalance} onViewAll={() => setView("debts")} onViewExpenses={() => setView("expenses")} onPlanner={() => setView("planner")} />}
           {view === "debts" && <DebtsView debts={debts} totalBalance={totalBalance} monthlyTotal={monthlyTotal} onAdd={() => { setEditingDebt(null); setAddOpen(true); }} onEdit={(debt) => { setEditingDebt(debt); setAddOpen(true); }} />}
-          {view === "expenses" && <ExpensesView expenses={expenses} monthlyExpenseTotal={monthlyExpenseTotal} monthlyDebtTotal={monthlyTotal} onAdd={() => { setEditingExpense(null); setAddExpenseOpen(true); }} onEdit={(expense) => { setEditingExpense(expense); setAddExpenseOpen(true); }} />}
+          {view === "incomes" && <IncomesView incomes={incomes} period={period} onAdd={() => { setEditingIncome(null); setAddIncomeOpen(true); }} onEdit={(income) => { setEditingIncome(income); setAddIncomeOpen(true); }} />}
+          {view === "expenses" && <ExpensesView expenses={expenses} monthlyExpenseTotal={monthlyExpenseTotal} monthlyDebtTotal={monthlyTotal} monthlyIncomeTotal={monthlyIncomeTotal} period={period} onAdd={() => { setEditingExpense(null); setAddExpenseOpen(true); }} onEdit={(expense) => { setEditingExpense(expense); setAddExpenseOpen(true); }} />}
+          {view === "savings" && <SavingsView accounts={accounts} onAdd={() => { setEditingAccount(null); setAddAccountOpen(true); }} onEdit={(account) => { setEditingAccount(account); setAddAccountOpen(true); }} />}
           {view === "calendar" && <CalendarView debts={debts} />}
           {view === "planner" && <PlannerView onBack={() => setView("overview")} />}
         </div>
@@ -410,14 +523,16 @@ export default function HomePage() {
 
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-[#dfe7e1] bg-white/95 px-1 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden" aria-label="เมนูมือถือ">
         <MobileNav active={view === "overview"} icon={<Home />} label="ภาพรวม" onClick={() => setView("overview")} />
-        <MobileNav active={view === "debts"} icon={<WalletCards />} label="หนี้" onClick={() => setView("debts")} />
+        <MobileNav active={view === "incomes"} icon={<ArrowDownToLine />} label="รายรับ" onClick={() => setView("incomes")} />
         <MobileNav active={view === "expenses"} icon={<ReceiptText />} label="รายจ่าย" onClick={() => setView("expenses")} />
-        <MobileNav active={view === "calendar"} icon={<CalendarDays />} label="ปฏิทิน" onClick={() => setView("calendar")} />
-        <MobileNav active={view === "planner"} icon={<Sparkles />} label="AI วางแผน" onClick={() => setView("planner")} />
+        <MobileNav active={view === "debts"} icon={<WalletCards />} label="หนี้" onClick={() => setView("debts")} />
+        <MobileNav active={view === "savings"} icon={<PiggyBank />} label="เงินเก็บ" onClick={() => setView("savings")} />
       </nav>
 
       <AddDebtDialog open={addOpen} item={editingDebt} onOpenChange={(open) => { setAddOpen(open); if (!open) setEditingDebt(null); }} onSave={saveDebt} onDelete={deleteDebt} />
       <AddExpenseDialog open={addExpenseOpen} item={editingExpense} onOpenChange={(open) => { setAddExpenseOpen(open); if (!open) setEditingExpense(null); }} onSave={saveExpense} onDelete={deleteExpense} />
+      <AddIncomeDialog open={addIncomeOpen} item={editingIncome} onOpenChange={(open) => { setAddIncomeOpen(open); if (!open) setEditingIncome(null); }} onSave={saveIncome} onDelete={deleteIncome} />
+      <AddAccountDialog open={addAccountOpen} item={editingAccount} onOpenChange={(open) => { setAddAccountOpen(open); if (!open) setEditingAccount(null); }} onSave={saveAccount} onDelete={deleteAccount} />
       {notice && <div role="status" className="fixed bottom-24 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#152d23] px-5 py-3 text-sm font-medium text-white shadow-xl lg:bottom-8"><Check className="size-4 text-[#d7ff71]" />{notice}</div>}
     </main>
   );
@@ -446,30 +561,55 @@ function MobileNav({ active, icon, label, onClick }: { active?: boolean; icon: R
   return <button onClick={onClick} className={`flex flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] font-semibold ${active ? "text-[#153c2c]" : "text-[#829087]"}`}><span className={`grid size-8 place-items-center rounded-full [&>svg]:size-[18px] ${active ? "bg-[#d7ff71]" : ""}`}>{icon}</span>{label}</button>;
 }
 
-function Overview({ debts, expenses, monthlyTotal, monthlyExpenseTotal, totalBalance, onViewAll, onViewExpenses, onPlanner }: { debts: Debt[]; expenses: Expense[]; monthlyTotal: number; monthlyExpenseTotal: number; totalBalance: number; onViewAll: () => void; onViewExpenses: () => void; onPlanner: () => void }) {
-  const income = 68000;
-  const essentials = monthlyExpenseTotal;
-  const remaining = income - essentials - monthlyTotal;
+function PeriodSwitch({ period, onChange }: { period: Period; onChange: (period: Period) => void }) {
+  return <div className="inline-flex rounded-full border border-[#dfe7e1] bg-white p-1 shadow-sm" aria-label="ช่วงเวลา">{([["daily", "รายวัน"], ["weekly", "รายสัปดาห์"], ["monthly", "รายเดือน"]] as const).map(([value, label]) => <button key={value} onClick={() => onChange(value)} className={`rounded-full px-3.5 py-2 text-xs font-bold transition sm:px-5 ${period === value ? "bg-[#152d23] text-white" : "text-[#6b7b72] hover:bg-[#eef3ee]"}`}>{label}</button>)}</div>;
+}
+
+const periodFactor = (period: Period) => period === "daily" ? 1 / 30 : period === "weekly" ? 7 / 30 : 1;
+const periodText = (period: Period) => period === "daily" ? "วันนี้" : period === "weekly" ? "สัปดาห์นี้" : "เดือนนี้";
+
+function Overview({ debts, expenses, incomes, accounts, period, monthlyTotal, monthlyExpenseTotal, monthlyIncomeTotal, totalBalance, onViewAll, onViewExpenses, onPlanner }: { debts: Debt[]; expenses: Expense[]; incomes: Income[]; accounts: SavingsAccount[]; period: Period; monthlyTotal: number; monthlyExpenseTotal: number; monthlyIncomeTotal: number; totalBalance: number; onViewAll: () => void; onViewExpenses: () => void; onPlanner: () => void }) {
+  const factor = periodFactor(period);
+  const income = monthlyIncomeTotal * factor;
+  const essentials = monthlyExpenseTotal * factor;
+  const debtPayment = monthlyTotal * factor;
+  const remaining = income - essentials - debtPayment;
+  const categoryTotals = (["หนี้สิน", "ชีวิตประจำวัน", "การลงทุน", "อีเวนต์", "อื่น ๆ"] as MoneyCategory[]).map((category) => ({
+    category,
+    amount: category === "หนี้สิน" ? debtPayment : expenses.filter((item) => item.category === category).reduce((sum, item) => sum + item.amount * factor, 0),
+  }));
   return <div className="space-y-6">
     <div className="grid gap-6 xl:grid-cols-[1.4fr_.9fr]">
       <section className="relative overflow-hidden rounded-[28px] bg-[#152d23] p-6 text-white shadow-[0_24px_60px_rgba(20,45,35,.16)] sm:p-8">
         <div className="absolute -right-20 -top-24 size-64 rounded-full border-[46px] border-white/[.04]" />
-        <div className="relative flex items-start justify-between gap-4"><div><p className="text-sm font-medium text-white/60">ภาระที่ต้องจ่ายในเดือนนี้</p><p className="mt-3 text-4xl font-black tracking-[-0.05em] sm:text-5xl">฿{money.format(monthlyTotal)}</p><div className="mt-4 flex items-center gap-2 text-sm text-white/65"><span className="rounded-full bg-[#d7ff71]/15 px-2.5 py-1 font-semibold text-[#d7ff71]">จ่ายแล้ว 61%</span><span>เหลืออีก 2 รายการ</span></div></div><div className="relative grid size-[94px] shrink-0 place-items-center rounded-full bg-[conic-gradient(#d7ff71_0_61%,rgba(255,255,255,.1)_61%_100%)]"><div className="grid size-[72px] place-items-center rounded-full bg-[#152d23] text-center"><span className="text-xl font-black">61%</span><span className="-mt-4 text-[10px] text-white/50">สำเร็จแล้ว</span></div></div></div>
-        <div className="relative mt-8"><div className="mb-2 flex justify-between text-xs text-white/55"><span>ต.ค. 2569</span><span>เป้าหมาย ฿{money.format(monthlyTotal)}</span></div><Progress value={61} className="h-2.5 bg-white/10 [&_[data-slot=progress-indicator]]:bg-[#d7ff71]" /></div>
+        <div className="relative flex items-start justify-between gap-4"><div><p className="text-sm font-medium text-white/60">ภาระที่ต้องจ่าย{periodText(period)}</p><p className="mt-3 text-4xl font-black tracking-[-0.05em] sm:text-5xl">฿{money.format(debtPayment)}</p><div className="mt-4 flex items-center gap-2 text-sm text-white/65"><span className="rounded-full bg-[#d7ff71]/15 px-2.5 py-1 font-semibold text-[#d7ff71]">จ่ายแล้ว 61%</span><span>เหลืออีก 2 รายการ</span></div></div><div className="relative grid size-[94px] shrink-0 place-items-center rounded-full bg-[conic-gradient(#d7ff71_0_61%,rgba(255,255,255,.1)_61%_100%)]"><div className="grid size-[72px] place-items-center rounded-full bg-[#152d23] text-center"><span className="text-xl font-black">61%</span><span className="-mt-4 text-[10px] text-white/50">สำเร็จแล้ว</span></div></div></div>
+        <div className="relative mt-8"><div className="mb-2 flex justify-between text-xs text-white/55"><span>{periodText(period)}</span><span>ประมาณการ ฿{money.format(debtPayment)}</span></div><Progress value={61} className="h-2.5 bg-white/10 [&_[data-slot=progress-indicator]]:bg-[#d7ff71]" /></div>
         <div className="relative mt-7 grid grid-cols-2 gap-3 border-t border-white/10 pt-5"><div><p className="text-xs text-white/50">ครบกำหนดถัดไป</p><p className="mt-1.5 flex items-center gap-2 text-sm font-semibold"><Building2 className="size-4 text-[#d7ff71]" /> บ้าน · 5 ต.ค.</p></div><div><p className="text-xs text-white/50">ยอดถัดไป</p><p className="mt-1 text-lg font-bold">฿16,800</p></div></div>
       </section>
 
       <section className="rounded-[28px] border border-[#dfe7e1] bg-white p-6 sm:p-7">
         <div className="flex items-start justify-between"><div><p className="text-sm font-semibold text-[#607069]">เงินของเดือนนี้</p><p className="mt-2 text-3xl font-black tracking-[-0.04em]">฿{money.format(remaining)}</p><p className="mt-1 text-xs text-[#819087]">คงเหลือหลังหักภาระทั้งหมด</p></div><span className="rounded-full bg-[#e8f9e8] px-3 py-1.5 text-xs font-bold text-[#337547]">คล่องตัวดี</span></div>
         <div className="mt-7 flex h-3 overflow-hidden rounded-full bg-[#edf1ed]"><span className="w-[48%] bg-[#173a2b]" /><span className="w-[29%] bg-[#9ec979]" /><span className="w-[23%] bg-[#d7ff71]" /></div>
-        <div className="mt-6 space-y-4"><MoneyLine color="bg-[#173a2b]" label="ชำระหนี้" amount={monthlyTotal} /><MoneyLine color="bg-[#9ec979]" label="รายจ่ายประจำ" amount={essentials} /><MoneyLine color="bg-[#d7ff71]" label="เหลือใช้และออม" amount={remaining} strong /></div>
+        <div className="mt-6 space-y-4"><MoneyLine color="bg-[#75a966]" label="รายรับ" amount={income} /><MoneyLine color="bg-[#173a2b]" label="ชำระหนี้" amount={debtPayment} /><MoneyLine color="bg-[#9ec979]" label="รายจ่าย" amount={essentials} /><MoneyLine color="bg-[#d7ff71]" label="เหลือใช้และออม" amount={remaining} strong /></div>
       </section>
     </div>
 
     <section className="rounded-[28px] border border-[#dfe7e1] bg-white p-5 sm:p-7">
-      <div className="mb-5 flex items-center justify-between"><div><h2 className="text-lg font-extrabold">รายจ่ายประจำเดือนนี้</h2><p className="mt-1 text-xs text-[#7a8981]">รวม ฿{money.format(monthlyExpenseTotal)} · {expenses.length} รายการ</p></div><button onClick={onViewExpenses} className="text-sm font-bold text-[#365b49]">จัดการรายจ่าย</button></div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{expenses.slice(0, 4).map((expense) => <div key={expense.id} className="flex items-center gap-3 rounded-2xl bg-[#f3f7f2] p-3.5"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-[#456852]">{expenseIcon(expense.icon)}</div><div className="min-w-0"><p className="truncate text-sm font-bold">{expense.name}</p><p className="text-xs text-[#7b8981]">{expense.due}</p></div><p className="ml-auto text-sm font-black">฿{money.format(expense.amount)}</p></div>)}</div>
+      <div className="mb-5 flex items-center justify-between"><div><h2 className="text-lg font-extrabold">รายจ่าย{periodText(period)}</h2><p className="mt-1 text-xs text-[#7a8981]">ประมาณการ ฿{money.format(essentials)} · {expenses.length} รายการ</p></div><button onClick={onViewExpenses} className="text-sm font-bold text-[#365b49]">จัดการรายจ่าย</button></div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{expenses.slice(0, 4).map((expense) => <div key={expense.id} className="flex items-center gap-3 rounded-2xl bg-[#f3f7f2] p-3.5"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-[#456852]">{expenseIcon(expense.icon)}</div><div className="min-w-0"><p className="truncate text-sm font-bold">{expense.name}</p><p className="text-xs text-[#7b8981]">{expense.due}</p></div><p className="ml-auto text-sm font-black">฿{money.format(expense.amount * factor)}</p></div>)}</div>
     </section>
+
+    <div className="grid gap-6 xl:grid-cols-[1.2fr_.8fr]">
+      <section className="rounded-[28px] border border-[#dfe7e1] bg-white p-5 sm:p-7">
+        <div className="mb-5"><h2 className="text-lg font-extrabold">สรุปตามหมวดหมู่</h2><p className="mt-1 text-xs text-[#7a8981]">รายจ่ายประมาณการสำหรับ{periodText(period)}</p></div>
+        <div className="grid gap-3 sm:grid-cols-2">{categoryTotals.map((item, index) => <div key={item.category} className="rounded-2xl bg-[#f3f7f2] p-4"><div className="flex items-center gap-3"><span className={`size-3 rounded-full ${["bg-[#173a2b]", "bg-[#8db77d]", "bg-[#77a8d3]", "bg-[#d69c62]", "bg-[#9c83bf]"][index]}`} /><span className="text-sm font-bold">{item.category}</span><span className="ml-auto text-sm font-black">฿{money.format(item.amount)}</span></div></div>)}</div>
+      </section>
+      <section className="rounded-[28px] bg-[#d7ff71] p-6 sm:p-7">
+        <div className="flex items-center justify-between"><div className="grid size-11 place-items-center rounded-2xl bg-white/70"><PiggyBank className="size-5" /></div><span className="rounded-full bg-white/60 px-3 py-1 text-xs font-bold">{accounts.length} บัญชี</span></div>
+        <p className="mt-6 text-sm font-semibold text-[#506257]">เงินเก็บทั้งหมด</p><p className="mt-1 text-3xl font-black tracking-[-0.04em]">฿{money.format(accounts.reduce((sum, item) => sum + item.balance, 0))}</p>
+        <p className="mt-4 text-xs leading-5 text-[#53675a]">รายรับที่บันทึกไว้ {incomes.length} รายการ · ฿{money.format(monthlyIncomeTotal)} ต่อเดือน</p>
+      </section>
+    </div>
 
     <div className="grid gap-6 xl:grid-cols-[1.35fr_.95fr]">
       <section className="rounded-[28px] border border-[#dfe7e1] bg-white p-5 sm:p-7">
@@ -510,18 +650,46 @@ function DebtsView({ debts, totalBalance, monthlyTotal, onAdd, onEdit }: { debts
 
 function SummaryCard({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) { return <div className="rounded-[22px] border border-[#dfe7e1] bg-white p-5"><div className="flex items-center justify-between text-[#6f8077]"><span className="text-xs font-semibold">{label}</span><span className="[&>svg]:size-5">{icon}</span></div><p className="mt-3 text-2xl font-black tracking-[-0.04em]">{value}</p></div>; }
 
-function ExpensesView({ expenses, monthlyExpenseTotal, monthlyDebtTotal, onAdd, onEdit }: { expenses: Expense[]; monthlyExpenseTotal: number; monthlyDebtTotal: number; onAdd: () => void; onEdit: (expense: Expense) => void }) {
+function ExpensesView({ expenses, monthlyExpenseTotal, monthlyDebtTotal, monthlyIncomeTotal, period, onAdd, onEdit }: { expenses: Expense[]; monthlyExpenseTotal: number; monthlyDebtTotal: number; monthlyIncomeTotal: number; period: Period; onAdd: () => void; onEdit: (expense: Expense) => void }) {
+  const factor = periodFactor(period);
   const autoPayTotal = expenses.filter((item) => item.autoPay).reduce((sum, item) => sum + item.amount, 0);
   return <div>
     <div className="mb-7 flex items-end justify-between"><div><p className="text-sm font-semibold text-[#75847c]">ค่าใช้จ่ายที่เกิดซ้ำ</p><h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">รายจ่ายประจำ</h2></div><Button onClick={onAdd} className="rounded-full bg-[#152d23]"><Plus /> เพิ่มรายจ่าย</Button></div>
-    <div className="grid gap-4 sm:grid-cols-3"><SummaryCard label="รวมเดือนนี้" value={`฿${money.format(monthlyExpenseTotal)}`} icon={<ReceiptText />} /><SummaryCard label="ตัดอัตโนมัติ" value={`฿${money.format(autoPayTotal)}`} icon={<Repeat2 />} /><SummaryCard label="จำนวนรายการ" value={`${expenses.length} รายการ`} icon={<CalendarDays />} /></div>
+    <div className="grid gap-4 sm:grid-cols-3"><SummaryCard label={`รวม${periodText(period)}`} value={`฿${money.format(monthlyExpenseTotal * factor)}`} icon={<ReceiptText />} /><SummaryCard label="ตัดอัตโนมัติ/เดือน" value={`฿${money.format(autoPayTotal)}`} icon={<Repeat2 />} /><SummaryCard label="จำนวนรายการ" value={`${expenses.length} รายการ`} icon={<CalendarDays />} /></div>
     <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_340px]">
       <section className="overflow-hidden rounded-[28px] border border-[#dfe7e1] bg-white">
         <div className="border-b border-[#e6ece7] px-5 py-4 sm:px-7"><h3 className="font-extrabold">รายการทั้งหมด</h3></div>
         <div className="divide-y divide-[#e8ede9] px-5 sm:px-7">{expenses.map((expense) => <button type="button" onClick={() => onEdit(expense)} key={expense.id} className="flex w-full items-center gap-3 py-4 text-left transition hover:bg-[#fbfcfa]"><div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#edf4eb] text-[#41604d]">{expenseIcon(expense.icon)}</div><div className="min-w-0"><p className="truncate text-sm font-bold">{expense.name}</p><p className="mt-0.5 text-xs text-[#7b8981]">{expense.category} · {expense.due}</p></div>{expense.autoPay && <span className="ml-auto hidden rounded-full bg-[#e7f4e5] px-2.5 py-1 text-[11px] font-bold text-[#39704a] sm:block">อัตโนมัติ</span>}<p className={`${expense.autoPay ? "sm:ml-2" : "ml-auto"} text-sm font-black`}>฿{money.format(expense.amount)}</p><ChevronRight className="size-4 text-[#a3aea8]" /></button>)}</div>
       </section>
-      <aside className="rounded-[28px] bg-[#e6efdf] p-6"><div className="grid size-11 place-items-center rounded-2xl bg-white"><Sparkles className="size-5" /></div><h3 className="mt-6 text-2xl font-black leading-snug tracking-[-0.04em]">ค่าใช้จ่ายประจำคิดเป็น {Math.round(monthlyExpenseTotal / 680)}% ของรายได้</h3><p className="mt-3 text-sm leading-6 text-[#5e7065]">เดือนนี้ค่าอาหารและของใช้เป็นหมวดที่สูงที่สุด ลองตั้งงบย่อยรายสัปดาห์ที่ประมาณ ฿2,250</p><div className="mt-6 rounded-2xl bg-white/70 p-4"><p className="text-xs text-[#718078]">งบที่ยังใช้ได้หลังหักหนี้และรายจ่าย</p><p className="mt-1 text-2xl font-black">฿{money.format(68000 - monthlyDebtTotal - monthlyExpenseTotal)}</p></div></aside>
+      <aside className="rounded-[28px] bg-[#e6efdf] p-6"><div className="grid size-11 place-items-center rounded-2xl bg-white"><Sparkles className="size-5" /></div><h3 className="mt-6 text-2xl font-black leading-snug tracking-[-0.04em]">ค่าใช้จ่ายประจำคิดเป็น {monthlyIncomeTotal ? Math.round(monthlyExpenseTotal / monthlyIncomeTotal * 100) : 0}% ของรายได้</h3><p className="mt-3 text-sm leading-6 text-[#5e7065]">หมวดชีวิตประจำวันเป็นหมวดหลัก ลองสลับดูรายวันและรายสัปดาห์เพื่อคุมงบย่อย</p><div className="mt-6 rounded-2xl bg-white/70 p-4"><p className="text-xs text-[#718078]">งบที่ยังใช้ได้หลังหักหนี้และรายจ่าย</p><p className="mt-1 text-2xl font-black">฿{money.format((monthlyIncomeTotal - monthlyDebtTotal - monthlyExpenseTotal) * factor)}</p></div></aside>
     </div>
+  </div>;
+}
+
+function IncomesView({ incomes, period, onAdd, onEdit }: { incomes: Income[]; period: Period; onAdd: () => void; onEdit: (income: Income) => void }) {
+  const monthlyTotal = incomes.reduce((sum, item) => sum + item.amount, 0);
+  const projected = monthlyTotal * periodFactor(period);
+  return <div>
+    <div className="mb-7 flex items-end justify-between"><div><p className="text-sm font-semibold text-[#75847c]">เงินเข้าและรายได้</p><h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">รายรับของฉัน</h2></div><Button onClick={onAdd} className="rounded-full bg-[#152d23]"><Plus /> เพิ่มรายรับ</Button></div>
+    <div className="grid gap-4 sm:grid-cols-3"><SummaryCard label={`ประมาณการ${periodText(period)}`} value={`฿${money.format(projected)}`} icon={<ArrowDownToLine />} /><SummaryCard label="รายรับต่อเดือน" value={`฿${money.format(monthlyTotal)}`} icon={<CircleDollarSign />} /><SummaryCard label="แหล่งรายได้" value={`${incomes.length} รายการ`} icon={<Landmark />} /></div>
+    <section className="mt-6 overflow-hidden rounded-[28px] border border-[#dfe7e1] bg-white"><div className="border-b border-[#e6ece7] px-5 py-4 sm:px-7"><h3 className="font-extrabold">รายการรายรับ</h3></div><div className="divide-y divide-[#e8ede9] px-5 sm:px-7">{incomes.map((income) => <button type="button" onClick={() => onEdit(income)} key={income.id} className="flex w-full items-center gap-3 py-4 text-left transition hover:bg-[#fbfcfa]"><div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#e7f4e5] text-[#39704a]"><ArrowDownToLine className="size-5" /></div><div className="min-w-0"><p className="truncate text-sm font-bold">{income.name}</p><p className="mt-0.5 text-xs text-[#7b8981]">{income.category} · {income.due}</p></div>{income.recurring && <span className="ml-auto hidden rounded-full bg-[#e7f4e5] px-2.5 py-1 text-[11px] font-bold text-[#39704a] sm:block">ประจำ</span>}<p className={`${income.recurring ? "sm:ml-2" : "ml-auto"} text-sm font-black text-[#2f7446]`}>+฿{money.format(income.amount)}</p><ChevronRight className="size-4 text-[#a3aea8]" /></button>)}</div></section>
+  </div>;
+}
+
+const accountColors = {
+  lime: "bg-[#d7ff71] text-[#183324]",
+  blue: "bg-[#cbe6ff] text-[#153b5e]",
+  orange: "bg-[#ffddae] text-[#55310a]",
+  purple: "bg-[#e4d8ff] text-[#3f286a]",
+};
+
+function SavingsView({ accounts, onAdd, onEdit }: { accounts: SavingsAccount[]; onAdd: () => void; onEdit: (account: SavingsAccount) => void }) {
+  const total = accounts.reduce((sum, item) => sum + item.balance, 0);
+  const target = accounts.reduce((sum, item) => sum + item.target, 0);
+  return <div>
+    <div className="mb-7 flex items-end justify-between"><div><p className="text-sm font-semibold text-[#75847c]">กระเป๋าเงินและเป้าหมาย</p><h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">บัญชีเงินเก็บ</h2></div><Button onClick={onAdd} className="rounded-full bg-[#152d23]"><Plus /> เพิ่มบัญชี</Button></div>
+    <div className="grid gap-4 sm:grid-cols-3"><SummaryCard label="เงินเก็บทั้งหมด" value={`฿${money.format(total)}`} icon={<PiggyBank />} /><SummaryCard label="เป้าหมายรวม" value={`฿${money.format(target)}`} icon={<CircleDollarSign />} /><SummaryCard label="จำนวนบัญชี" value={`${accounts.length} บัญชี`} icon={<Landmark />} /></div>
+    <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{accounts.map((account) => { const progress = account.target > 0 ? Math.min(100, account.balance / account.target * 100) : 0; return <button key={account.id} onClick={() => onEdit(account)} className="rounded-[26px] border border-[#dfe7e1] bg-white p-5 text-left transition hover:-translate-y-1 hover:shadow-lg"><div className="flex items-start justify-between"><div className={`grid size-12 place-items-center rounded-2xl ${accountColors[account.color]}`}><PiggyBank className="size-5" /></div><MoreHorizontal className="size-5 text-[#829087]" /></div><p className="mt-5 text-xs font-semibold text-[#7b8981]">{account.institution}</p><h3 className="mt-1 text-xl font-black">{account.name}</h3><p className="mt-5 text-3xl font-black tracking-[-0.04em]">฿{money.format(account.balance)}</p><div className="mt-5"><div className="mb-2 flex justify-between text-xs text-[#718078]"><span>เป้าหมาย ฿{money.format(account.target)}</span><span>{Math.round(progress)}%</span></div><Progress value={progress} className="h-2 bg-[#e9eeea] [&_[data-slot=progress-indicator]]:bg-[#6f9d70]" /></div></button>; })}</div>
   </div>;
 }
 
@@ -575,7 +743,7 @@ function AddDebtDialog({ open, item, onOpenChange, onSave, onDelete }: { open: b
 }
 
 function AddExpenseDialog({ open, item, onOpenChange, onSave, onDelete }: { open: boolean; item: Expense | null; onOpenChange: (open: boolean) => void; onSave: (expense: Expense) => void; onDelete: (id: number) => void }) {
-  const [category, setCategory] = useState("สาธารณูปโภค");
+  const [category, setCategory] = useState<MoneyCategory>("ชีวิตประจำวัน");
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [due, setDue] = useState("");
@@ -583,7 +751,7 @@ function AddExpenseDialog({ open, item, onOpenChange, onSave, onDelete }: { open
 
   useEffect(() => {
     if (!open) return;
-    setCategory(item?.category ?? "สาธารณูปโภค");
+    setCategory(item?.category ?? "ชีวิตประจำวัน");
     setName(item?.name ?? "");
     setAmount(item ? String(item.amount) : "");
     setDue(item?.due ?? "");
@@ -598,7 +766,29 @@ function AddExpenseDialog({ open, item, onOpenChange, onSave, onDelete }: { open
     onSave({ id: item?.id ?? Date.now(), name: cleanName, category, amount: amountValue, due: due.trim() || "ยังไม่ระบุ", icon: expenseIconFromCategory(category, cleanName), autoPay });
   };
 
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-auto rounded-[26px] border-[#dfe7e1] p-0 sm:max-w-[540px]"><form onSubmit={submit}><DialogHeader className="border-b border-[#e4eae5] p-6 text-left"><DialogTitle className="text-2xl font-black tracking-[-0.03em]">{item ? "แก้ไขรายจ่ายประจำ" : "เพิ่มรายจ่ายประจำ"}</DialogTitle><DialogDescription>เพิ่มค่าน้ำ ค่าไฟ ค่าโทรศัพท์ หรือรายจ่ายที่เกิดซ้ำทุกเดือน</DialogDescription></DialogHeader><div className="space-y-5 px-6"><Field label="หมวดรายจ่าย"><select className="field-input" value={category} onChange={(event) => setCategory(event.target.value)}><option>สาธารณูปโภค</option><option>การสื่อสาร</option><option>การเดินทาง</option><option>อาหารและของใช้</option><option>สมาชิกและแอป</option><option>อื่น ๆ</option></select></Field><Field label="ชื่อรายการ"><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="เช่น ค่าไฟ, ค่าน้ำ, ค่าโทรศัพท์" required /></Field><div className="grid grid-cols-2 gap-4"><Field label="จำนวนเงินต่อเดือน"><input className="field-input" type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></Field><Field label="วันครบกำหนด"><input className="field-input" value={due} onChange={(event) => setDue(event.target.value)} placeholder="เช่น 10 ของทุกเดือน" /></Field></div><label className="flex items-center gap-3 rounded-2xl bg-[#f2f6f1] p-4 text-sm font-bold"><input type="checkbox" checked={autoPay} onChange={(event) => setAutoPay(event.target.checked)} className="size-4 accent-[#152d23]" /> ตัดชำระอัตโนมัติ</label></div><DialogFooter className="mt-2 flex-row border-t border-[#e4eae5] p-6">{item && <Button type="button" variant="outline" onClick={() => onDelete(item.id)} className="mr-auto h-11 rounded-full border-red-200 px-5 text-red-600 hover:bg-red-50">ลบ</Button>}<DialogClose asChild><Button type="button" variant="outline" className="h-11 rounded-full px-5">ยกเลิก</Button></DialogClose><Button type="submit" className="h-11 rounded-full bg-[#152d23] px-6 text-white">บันทึกรายจ่าย</Button></DialogFooter></form></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-auto rounded-[26px] border-[#dfe7e1] p-0 sm:max-w-[540px]"><form onSubmit={submit}><DialogHeader className="border-b border-[#e4eae5] p-6 text-left"><DialogTitle className="text-2xl font-black tracking-[-0.03em]">{item ? "แก้ไขรายจ่ายประจำ" : "เพิ่มรายจ่ายประจำ"}</DialogTitle><DialogDescription>เพิ่มค่าน้ำ ค่าไฟ ค่าโทรศัพท์ หรือรายจ่ายที่เกิดซ้ำทุกเดือน</DialogDescription></DialogHeader><div className="space-y-5 px-6"><Field label="หมวดรายจ่าย"><select className="field-input" value={category} onChange={(event) => setCategory(event.target.value as MoneyCategory)}><option>ชีวิตประจำวัน</option><option>การลงทุน</option><option>อีเวนต์</option><option>อื่น ๆ</option></select></Field><Field label="ชื่อรายการ"><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="เช่น ค่าไฟ, ค่าน้ำ, ค่าโทรศัพท์" required /></Field><div className="grid grid-cols-2 gap-4"><Field label="จำนวนเงินต่อเดือน"><input className="field-input" type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" required /></Field><Field label="วันครบกำหนด"><input className="field-input" value={due} onChange={(event) => setDue(event.target.value)} placeholder="เช่น 10 ของทุกเดือน" /></Field></div><label className="flex items-center gap-3 rounded-2xl bg-[#f2f6f1] p-4 text-sm font-bold"><input type="checkbox" checked={autoPay} onChange={(event) => setAutoPay(event.target.checked)} className="size-4 accent-[#152d23]" /> ตัดชำระอัตโนมัติ</label></div><DialogFooter className="mt-2 flex-row border-t border-[#e4eae5] p-6">{item && <Button type="button" variant="outline" onClick={() => onDelete(item.id)} className="mr-auto h-11 rounded-full border-red-200 px-5 text-red-600 hover:bg-red-50">ลบ</Button>}<DialogClose asChild><Button type="button" variant="outline" className="h-11 rounded-full px-5">ยกเลิก</Button></DialogClose><Button type="submit" className="h-11 rounded-full bg-[#152d23] px-6 text-white">บันทึกรายจ่าย</Button></DialogFooter></form></DialogContent></Dialog>;
+}
+
+function AddIncomeDialog({ open, item, onOpenChange, onSave, onDelete }: { open: boolean; item: Income | null; onOpenChange: (open: boolean) => void; onSave: (income: Income) => void; onDelete: (id: number) => void }) {
+  const [category, setCategory] = useState<MoneyCategory>("อื่น ๆ");
+  const [name, setName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [due, setDue] = useState("");
+  const [recurring, setRecurring] = useState(true);
+  useEffect(() => { if (open) { setCategory(item?.category ?? "อื่น ๆ"); setName(item?.name ?? ""); setAmount(item ? String(item.amount) : ""); setDue(item?.due ?? ""); setRecurring(item?.recurring ?? true); } }, [item, open]);
+  const submit = (event: React.FormEvent) => { event.preventDefault(); const value = Number(amount); if (!name.trim() || !Number.isFinite(value) || value < 0) return; onSave({ id: item?.id ?? Date.now(), name: name.trim(), category, amount: value, due: due.trim() || "ยังไม่ระบุ", recurring }); };
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-auto rounded-[26px] border-[#dfe7e1] p-0 sm:max-w-[540px]"><form onSubmit={submit}><DialogHeader className="border-b border-[#e4eae5] p-6 text-left"><DialogTitle className="text-2xl font-black">{item ? "แก้ไขรายรับ" : "เพิ่มรายรับ"}</DialogTitle><DialogDescription>บันทึกเงินเดือน รายได้เสริม เงินปันผล หรือเงินเข้าอื่น ๆ</DialogDescription></DialogHeader><div className="space-y-5 px-6"><Field label="หมวดหมู่"><select className="field-input" value={category} onChange={(event) => setCategory(event.target.value as MoneyCategory)}><option>ชีวิตประจำวัน</option><option>การลงทุน</option><option>อีเวนต์</option><option>อื่น ๆ</option></select></Field><Field label="ชื่อรายรับ"><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="เช่น เงินเดือน, งานเสริม" required /></Field><div className="grid grid-cols-2 gap-4"><Field label="จำนวนเงินต่อเดือน"><input className="field-input" type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} required /></Field><Field label="วันที่รับเงิน"><input className="field-input" value={due} onChange={(event) => setDue(event.target.value)} placeholder="เช่น 25 ของทุกเดือน" /></Field></div><label className="flex items-center gap-3 rounded-2xl bg-[#f2f6f1] p-4 text-sm font-bold"><input type="checkbox" checked={recurring} onChange={(event) => setRecurring(event.target.checked)} className="size-4 accent-[#152d23]" /> เป็นรายรับประจำ</label></div><DialogFooter className="mt-2 flex-row border-t border-[#e4eae5] p-6">{item && <Button type="button" variant="outline" onClick={() => onDelete(item.id)} className="mr-auto h-11 rounded-full border-red-200 px-5 text-red-600">ลบ</Button>}<DialogClose asChild><Button type="button" variant="outline" className="h-11 rounded-full px-5">ยกเลิก</Button></DialogClose><Button type="submit" className="h-11 rounded-full bg-[#152d23] px-6 text-white">บันทึกรายรับ</Button></DialogFooter></form></DialogContent></Dialog>;
+}
+
+function AddAccountDialog({ open, item, onOpenChange, onSave, onDelete }: { open: boolean; item: SavingsAccount | null; onOpenChange: (open: boolean) => void; onSave: (account: SavingsAccount) => void; onDelete: (id: number) => void }) {
+  const [name, setName] = useState("");
+  const [institution, setInstitution] = useState("");
+  const [balance, setBalance] = useState("");
+  const [target, setTarget] = useState("");
+  const [color, setColor] = useState<SavingsAccount["color"]>("lime");
+  useEffect(() => { if (open) { setName(item?.name ?? ""); setInstitution(item?.institution ?? ""); setBalance(item ? String(item.balance) : ""); setTarget(item ? String(item.target) : ""); setColor(item?.color ?? "lime"); } }, [item, open]);
+  const submit = (event: React.FormEvent) => { event.preventDefault(); const balanceValue = Number(balance); const targetValue = Number(target); if (!name.trim() || !institution.trim() || !Number.isFinite(balanceValue) || balanceValue < 0 || !Number.isFinite(targetValue) || targetValue < 0) return; onSave({ id: item?.id ?? Date.now(), name: name.trim(), institution: institution.trim(), balance: balanceValue, target: targetValue, color }); };
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-auto rounded-[26px] border-[#dfe7e1] p-0 sm:max-w-[540px]"><form onSubmit={submit}><DialogHeader className="border-b border-[#e4eae5] p-6 text-left"><DialogTitle className="text-2xl font-black">{item ? "แก้ไขบัญชีเงินเก็บ" : "เพิ่มบัญชีเงินเก็บ"}</DialogTitle><DialogDescription>แยกเงินฉุกเฉิน เงินลงทุน หรือเป้าหมายต่าง ๆ ได้หลายบัญชี</DialogDescription></DialogHeader><div className="space-y-5 px-6"><Field label="ชื่อบัญชี"><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="เช่น เงินสำรองฉุกเฉิน" required /></Field><Field label="ธนาคารหรือผู้ให้บริการ"><input className="field-input" value={institution} onChange={(event) => setInstitution(event.target.value)} placeholder="เช่น K PLUS" required /></Field><div className="grid grid-cols-2 gap-4"><Field label="ยอดเงินปัจจุบัน"><input className="field-input" type="number" min="0" step="0.01" value={balance} onChange={(event) => setBalance(event.target.value)} required /></Field><Field label="เป้าหมาย"><input className="field-input" type="number" min="0" step="0.01" value={target} onChange={(event) => setTarget(event.target.value)} required /></Field></div><Field label="สีบัญชี"><select className="field-input" value={color} onChange={(event) => setColor(event.target.value as SavingsAccount["color"])}><option value="lime">เขียวมะนาว</option><option value="blue">ฟ้า</option><option value="orange">ส้ม</option><option value="purple">ม่วง</option></select></Field></div><DialogFooter className="mt-2 flex-row border-t border-[#e4eae5] p-6">{item && <Button type="button" variant="outline" onClick={() => onDelete(item.id)} className="mr-auto h-11 rounded-full border-red-200 px-5 text-red-600">ลบ</Button>}<DialogClose asChild><Button type="button" variant="outline" className="h-11 rounded-full px-5">ยกเลิก</Button></DialogClose><Button type="submit" className="h-11 rounded-full bg-[#152d23] px-6 text-white">บันทึกบัญชี</Button></DialogFooter></form></DialogContent></Dialog>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-sm font-bold"><span className="mb-2 block">{label}</span>{children}</label>; }
