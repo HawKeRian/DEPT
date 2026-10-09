@@ -6,6 +6,7 @@ export const financeStates = sqliteTable("finance_states", {
   expensesJson: text("expenses_json").notNull().default("[]"),
   incomesJson: text("incomes_json").notNull().default("[]"),
   accountsJson: text("accounts_json").notNull().default("[]"),
+  profileJson: text("profile_json").notNull().default("{}"),
   updatedAt: text("updated_at").notNull(),
 });
 

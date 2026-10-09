@@ -1,0 +1,1 @@
+ALTER TABLE `finance_states` ADD `profile_json` text DEFAULT '{}' NOT NULL;

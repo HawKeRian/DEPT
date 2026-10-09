@@ -8,6 +8,7 @@ type FinancePayload = {
   expenses?: unknown;
   incomes?: unknown;
   accounts?: unknown;
+  profile?: unknown;
   updatedAt?: unknown;
 };
 
@@ -34,6 +35,7 @@ export async function GET() {
       expenses: JSON.parse(row.expensesJson),
       incomes: JSON.parse(row.incomesJson),
       accounts: JSON.parse(row.accountsJson),
+      profile: JSON.parse(row.profileJson),
       updatedAt: row.updatedAt,
     },
   });
@@ -44,7 +46,7 @@ export async function PUT(request: Request) {
   if (!user) return unauthorized();
 
   const payload = (await request.json()) as FinancePayload;
-  if (!validRecords(payload.debts, 250) || !validRecords(payload.expenses, 500) || !validRecords(payload.incomes, 500) || !validRecords(payload.accounts, 100)) {
+  if (!validRecords(payload.debts, 250) || !validRecords(payload.expenses, 500) || !validRecords(payload.incomes, 500) || !validRecords(payload.accounts, 100) || !payload.profile || typeof payload.profile !== "object" || Array.isArray(payload.profile) || JSON.stringify(payload.profile).length > 20_000) {
     return Response.json({ error: "รูปแบบข้อมูลไม่ถูกต้องหรือมีขนาดใหญ่เกินไป" }, { status: 400 });
   }
 
@@ -56,6 +58,7 @@ export async function PUT(request: Request) {
     expensesJson: JSON.stringify(payload.expenses),
     incomesJson: JSON.stringify(payload.incomes),
     accountsJson: JSON.stringify(payload.accounts),
+    profileJson: JSON.stringify(payload.profile),
     updatedAt,
   };
 
@@ -67,6 +70,7 @@ export async function PUT(request: Request) {
       expensesJson: values.expensesJson,
       incomesJson: values.incomesJson,
       accountsJson: values.accountsJson,
+      profileJson: values.profileJson,
       updatedAt: values.updatedAt,
     },
   });

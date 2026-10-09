@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine, Bell, Bot, Building2, CalendarDays, CarFront, Check, ChevronRight,
   CircleDollarSign, Cloud, CloudOff, CreditCard, GraduationCap, Home, LayoutDashboard,
-  Landmark, Lightbulb, LoaderCircle, Menu, MoreHorizontal, PiggyBank, Plus, ReceiptText, Settings,
+  Landmark, Lightbulb, LoaderCircle, Mail, MapPin, Menu, MoreHorizontal, Phone, PiggyBank, Plus, ReceiptText, Settings, UserRound,
   Droplets, Repeat2, ShieldCheck, Smartphone, Sparkles, TrendingDown,
   WalletCards, Wifi, X, Zap,
 } from "lucide-react";
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 
-type View = "overview" | "debts" | "expenses" | "incomes" | "savings" | "calendar" | "planner";
+type View = "overview" | "debts" | "expenses" | "incomes" | "savings" | "calendar" | "planner" | "profile";
 type Period = "daily" | "weekly" | "monthly";
 type MoneyCategory = "หนี้สิน" | "ชีวิตประจำวัน" | "การลงทุน" | "อีเวนต์" | "อื่น ๆ";
 type Debt = {
@@ -58,6 +58,15 @@ type SavingsAccount = {
   color: "lime" | "blue" | "orange" | "purple";
 };
 
+type Profile = {
+  displayName: string;
+  email: string;
+  phone: string;
+  city: string;
+  monthlySavingGoal: number;
+  bio: string;
+};
+
 const initialDebts: Debt[] = [
   { id: 1, name: "บ้าน", category: "สินเชื่อที่อยู่อาศัย", balance: 2380000, monthly: 16800, progress: 24, due: "5 ต.ค.", tone: "mint" },
   { id: 2, name: "รถ", category: "สินเชื่อเช่าซื้อ", balance: 428000, monthly: 9250, progress: 46, due: "12 ต.ค.", tone: "orange" },
@@ -84,11 +93,21 @@ const initialAccounts: SavingsAccount[] = [
   { id: 2, name: "เที่ยวปลายปี", institution: "SCB EASY", balance: 24500, target: 60000, color: "blue" },
 ];
 
+const initialProfile: Profile = {
+  displayName: "กิตติพงษ์",
+  email: "",
+  phone: "",
+  city: "",
+  monthlySavingGoal: 10000,
+  bio: "กำลังตั้งหลักและสร้างความมั่นคงทางการเงิน",
+};
+
 const money = new Intl.NumberFormat("th-TH", { maximumFractionDigits: 0 });
 const DEBTS_STORAGE_KEY = "tanglak-debts-v1";
 const EXPENSES_STORAGE_KEY = "tanglak-expenses-v1";
 const INCOMES_STORAGE_KEY = "tanglak-incomes-v1";
 const ACCOUNTS_STORAGE_KEY = "tanglak-accounts-v1";
+const PROFILE_STORAGE_KEY = "tanglak-profile-v1";
 const UPDATED_AT_STORAGE_KEY = "tanglak-updated-at-v1";
 type SyncStatus = "loading" | "syncing" | "synced" | "offline" | "error";
 
@@ -145,11 +164,13 @@ export default function HomePage() {
   const [addExpenseOpen, setAddExpenseOpen] = useState(false);
   const [addIncomeOpen, setAddIncomeOpen] = useState(false);
   const [addAccountOpen, setAddAccountOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [debts, setDebts] = useState(initialDebts);
   const [expenses, setExpenses] = useState(initialExpenses);
   const [incomes, setIncomes] = useState(initialIncomes);
   const [accounts, setAccounts] = useState(initialAccounts);
+  const [profile, setProfile] = useState(initialProfile);
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
@@ -175,6 +196,7 @@ export default function HomePage() {
     let localExpenses = initialExpenses;
     let localIncomes = initialIncomes;
     let localAccounts = initialAccounts;
+    let localProfile = initialProfile;
     let localTime = 0;
 
     try {
@@ -182,6 +204,7 @@ export default function HomePage() {
       const savedExpenses = localStorage.getItem(EXPENSES_STORAGE_KEY);
       const savedIncomes = localStorage.getItem(INCOMES_STORAGE_KEY);
       const savedAccounts = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
+      const savedProfile = localStorage.getItem(PROFILE_STORAGE_KEY);
       if (savedDebts) {
         const parsed = JSON.parse(savedDebts);
         if (Array.isArray(parsed)) localDebts = parsed;
@@ -198,11 +221,16 @@ export default function HomePage() {
         const parsed = JSON.parse(savedAccounts);
         if (Array.isArray(parsed)) localAccounts = parsed;
       }
+      if (savedProfile) {
+        const parsed = JSON.parse(savedProfile);
+        if (parsed && typeof parsed === "object") localProfile = { ...initialProfile, ...parsed };
+      }
       localTime = Number(localStorage.getItem(UPDATED_AT_STORAGE_KEY)) || 0;
       setDebts(localDebts);
       setExpenses(localExpenses);
       setIncomes(localIncomes);
       setAccounts(localAccounts);
+      setProfile(localProfile);
       setLocalUpdatedAt(localTime);
     } catch {
       setNotice("ไม่สามารถอ่านข้อมูลเดิมได้ จึงแสดงข้อมูลตัวอย่างแทน");
@@ -225,7 +253,7 @@ export default function HomePage() {
         setSyncStatus("loading");
         const response = await fetch("/api/finance-state", { cache: "no-store" });
         if (!response.ok) throw new Error("cloud unavailable");
-        const payload = await response.json() as { state: { debts: Debt[]; expenses: Expense[]; incomes?: Income[]; accounts?: SavingsAccount[]; updatedAt: string } | null };
+        const payload = await response.json() as { state: { debts: Debt[]; expenses: Expense[]; incomes?: Income[]; accounts?: SavingsAccount[]; profile?: Profile; updatedAt: string } | null };
         const remoteTime = payload.state ? Date.parse(payload.state.updatedAt) || 0 : 0;
 
         if (payload.state && remoteTime >= localTime) {
@@ -234,6 +262,7 @@ export default function HomePage() {
           setExpenses(payload.state.expenses);
           setIncomes(payload.state.incomes?.length ? payload.state.incomes : localIncomes);
           setAccounts(payload.state.accounts?.length ? payload.state.accounts : localAccounts);
+          setProfile(payload.state.profile?.displayName ? { ...initialProfile, ...payload.state.profile } : localProfile);
           setLocalUpdatedAt(remoteTime);
           setLastSyncedAt(remoteTime);
         } else {
@@ -241,7 +270,7 @@ export default function HomePage() {
           const upload = await fetch("/api/finance-state", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ debts: localDebts, expenses: localExpenses, incomes: localIncomes, accounts: localAccounts, updatedAt: new Date(uploadTime).toISOString() }),
+            body: JSON.stringify({ debts: localDebts, expenses: localExpenses, incomes: localIncomes, accounts: localAccounts, profile: localProfile, updatedAt: new Date(uploadTime).toISOString() }),
           });
           if (!upload.ok) throw new Error("cloud upload failed");
           if (!active) return;
@@ -289,6 +318,10 @@ export default function HomePage() {
   }, [accounts, hydrated]);
 
   useEffect(() => {
+    if (hydrated) localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  }, [hydrated, profile]);
+
+  useEffect(() => {
     if (hydrated && localUpdatedAt > 0) localStorage.setItem(UPDATED_AT_STORAGE_KEY, String(localUpdatedAt));
   }, [hydrated, localUpdatedAt]);
 
@@ -303,7 +336,7 @@ export default function HomePage() {
         const response = await fetch("/api/finance-state", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ debts, expenses, incomes, accounts, updatedAt: new Date(localUpdatedAt).toISOString() }),
+          body: JSON.stringify({ debts, expenses, incomes, accounts, profile, updatedAt: new Date(localUpdatedAt).toISOString() }),
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("sync failed");
@@ -315,7 +348,7 @@ export default function HomePage() {
     }, 700);
 
     return () => { window.clearTimeout(timeout); controller.abort(); };
-  }, [accounts, cloudReady, debts, expenses, hydrated, incomes, lastSyncedAt, localUpdatedAt]);
+  }, [accounts, cloudReady, debts, expenses, hydrated, incomes, lastSyncedAt, localUpdatedAt, profile]);
 
   useEffect(() => {
     const modelContext = (document as Document & {
@@ -412,6 +445,14 @@ export default function HomePage() {
     setTimeout(() => setNotice(""), 2800);
   };
 
+  const saveProfile = (nextProfile: Profile) => {
+    setProfile(nextProfile);
+    markChanged();
+    setProfileOpen(false);
+    setNotice("บันทึกโปรไฟล์แล้ว");
+    setTimeout(() => setNotice(""), 2800);
+  };
+
   const deleteDebt = (id: number) => {
     if (!window.confirm("ลบรายการหนี้นี้ใช่ไหม?")) return;
     setDebts((current) => current.filter((item) => item.id !== id));
@@ -467,19 +508,19 @@ export default function HomePage() {
             <p className="text-sm font-semibold">สำรองข้อมูลบน Cloud</p>
             <p className="mt-1 text-xs leading-5 text-white/60">เก็บสำเนาในเครื่องเพื่อใช้ออฟไลน์ และซิงก์กับบัญชีนี้เมื่อออนไลน์</p>
           </div>
-          <NavItem icon={<Settings />} label="ตั้งค่า" onClick={() => setNotice("หน้าตั้งค่าจะมาในเวอร์ชันถัดไป")} />
-          <div className="mt-5 flex items-center gap-3 border-t border-[#dfe7e1] pt-5">
-            <div className="flex size-10 items-center justify-center rounded-full bg-[#d7ff71] font-bold">ก</div>
-            <div className="min-w-0"><p className="truncate text-sm font-semibold">กิตติพงษ์</p><p className="text-xs text-[#6c7c74]">บัญชีส่วนตัว</p></div>
+          <NavItem active={view === "profile"} icon={<Settings />} label="โปรไฟล์และตั้งค่า" onClick={() => setView("profile")} />
+          <button onClick={() => setView("profile")} className="mt-5 flex w-full items-center gap-3 border-t border-[#dfe7e1] pt-5 text-left">
+            <div className="flex size-10 items-center justify-center rounded-full bg-[#d7ff71] font-bold">{profile.displayName.trim().charAt(0) || "ฉ"}</div>
+            <div className="min-w-0"><p className="truncate text-sm font-semibold">{profile.displayName || "โปรไฟล์ของฉัน"}</p><p className="truncate text-xs text-[#6c7c74]">{profile.email || "บัญชีส่วนตัว"}</p></div>
             <MoreHorizontal className="ml-auto size-5 text-[#6c7c74]" />
-          </div>
+          </button>
         </div>
       </aside>
 
       <section className="pb-24 lg:ml-[236px] lg:pb-0">
         <header className="sticky top-0 z-20 flex h-[72px] items-center border-b border-[#dfe7e1]/80 bg-[#f4f7f3]/90 px-4 backdrop-blur-xl sm:px-7 lg:px-10">
           <button className="mr-3 rounded-xl p-2 lg:hidden" onClick={() => setMenuOpen(!menuOpen)} aria-label="เปิดเมนู"><Menu className="size-5" /></button>
-          <div><p className="text-xs font-medium text-[#718078]">{todayLabel}</p><h1 className="text-lg font-bold tracking-[-0.02em]">{greeting}, กิตติพงษ์</h1></div>
+          <div><p className="text-xs font-medium text-[#718078]">{todayLabel}</p><h1 className="text-lg font-bold tracking-[-0.02em]">{greeting}, {profile.displayName || "คุณ"}</h1></div>
           <div className="ml-auto flex items-center gap-2">
             <SyncBadge status={syncStatus} />
             <button className="relative flex size-10 items-center justify-center rounded-full border border-[#dfe7e1] bg-white" aria-label="การแจ้งเตือน"><Bell className="size-[18px]" /><span className="absolute right-2 top-2 size-2 rounded-full bg-[#ff7657] ring-2 ring-white" /></button>
@@ -504,6 +545,7 @@ export default function HomePage() {
                 <NavItem active={view === "savings"} icon={<PiggyBank />} label="บัญชีเงินเก็บ" onClick={() => { setView("savings"); setMenuOpen(false); }} />
                 <NavItem active={view === "calendar"} icon={<CalendarDays />} label="ปฏิทินชำระ" onClick={() => { setView("calendar"); setMenuOpen(false); }} />
                 <NavItem active={view === "planner"} icon={<Sparkles />} label="AI วางแผน" onClick={() => { setView("planner"); setMenuOpen(false); }} />
+                <NavItem active={view === "profile"} icon={<UserRound />} label="โปรไฟล์ของฉัน" onClick={() => { setView("profile"); setMenuOpen(false); }} />
               </nav>
             </div>
           </div>
@@ -518,6 +560,7 @@ export default function HomePage() {
           {view === "savings" && <SavingsView accounts={accounts} onAdd={() => { setEditingAccount(null); setAddAccountOpen(true); }} onEdit={(account) => { setEditingAccount(account); setAddAccountOpen(true); }} />}
           {view === "calendar" && <CalendarView debts={debts} />}
           {view === "planner" && <PlannerView onBack={() => setView("overview")} />}
+          {view === "profile" && <ProfileView profile={profile} accounts={accounts} onEdit={() => setProfileOpen(true)} />}
         </div>
       </section>
 
@@ -533,6 +576,7 @@ export default function HomePage() {
       <AddExpenseDialog open={addExpenseOpen} item={editingExpense} onOpenChange={(open) => { setAddExpenseOpen(open); if (!open) setEditingExpense(null); }} onSave={saveExpense} onDelete={deleteExpense} />
       <AddIncomeDialog open={addIncomeOpen} item={editingIncome} onOpenChange={(open) => { setAddIncomeOpen(open); if (!open) setEditingIncome(null); }} onSave={saveIncome} onDelete={deleteIncome} />
       <AddAccountDialog open={addAccountOpen} item={editingAccount} onOpenChange={(open) => { setAddAccountOpen(open); if (!open) setEditingAccount(null); }} onSave={saveAccount} onDelete={deleteAccount} />
+      <ProfileDialog open={profileOpen} profile={profile} onOpenChange={setProfileOpen} onSave={saveProfile} />
       {notice && <div role="status" className="fixed bottom-24 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#152d23] px-5 py-3 text-sm font-medium text-white shadow-xl lg:bottom-8"><Check className="size-4 text-[#d7ff71]" />{notice}</div>}
     </main>
   );
@@ -698,6 +742,25 @@ function CalendarView({ debts }: { debts: Debt[] }) {
   return <div><p className="text-sm font-semibold text-[#75847c]">กำหนดชำระ</p><h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">ตุลาคม 2569</h2><div className="mt-7 grid gap-6 xl:grid-cols-[1fr_360px]"><section className="rounded-[28px] border border-[#dfe7e1] bg-white p-4 sm:p-7"><div className="grid grid-cols-7 text-center text-xs font-bold text-[#849189]">{["จ.","อ.","พ.","พฤ.","ศ.","ส.","อา."].map((d)=><div key={d} className="pb-4">{d}</div>)}</div><div className="grid grid-cols-7 gap-1 sm:gap-2">{days.map((day,index)=><div key={index} className={`relative min-h-16 rounded-xl p-2 text-sm sm:min-h-24 ${day===5?"bg-[#152d23] text-white":"bg-[#f6f8f5]"}`}>{day && <><span className="font-semibold">{day}</span>{[5,12,18,25].includes(day) && <span className={`absolute bottom-2 left-2 right-2 h-1.5 rounded-full ${day===5?"bg-[#d7ff71]":"bg-[#82aa75]"}`} />}</>}</div>)}</div></section><aside className="rounded-[28px] bg-[#152d23] p-6 text-white"><p className="text-xs font-semibold text-white/50">กำลังจะถึง</p><h3 className="mt-1 text-xl font-black">4 รายการในเดือนนี้</h3><div className="mt-6 space-y-3">{debts.map((debt,index)=><div key={debt.id} className="flex items-center gap-3 rounded-2xl bg-white/[.07] p-3"><div className={`grid size-10 place-items-center rounded-xl ${toneClasses[debt.tone]}`}>{iconFor(debt.name,"size-4")}</div><div><p className="text-sm font-bold">{debt.name}</p><p className="text-xs text-white/50">{index===3?"สำรองทุกเดือน":debt.due}</p></div><p className="ml-auto text-sm font-bold">฿{money.format(debt.monthly)}</p></div>)}</div></aside></div></div>;
 }
 
+function ProfileView({ profile, accounts, onEdit }: { profile: Profile; accounts: SavingsAccount[]; onEdit: () => void }) {
+  const savings = accounts.reduce((sum, item) => sum + item.balance, 0);
+  const target = accounts.reduce((sum, item) => sum + item.target, 0);
+  const goalProgress = target > 0 ? Math.min(100, savings / target * 100) : 0;
+  return <div className="mx-auto max-w-5xl">
+    <div className="mb-7 flex items-end justify-between"><div><p className="text-sm font-semibold text-[#75847c]">ข้อมูลส่วนตัวและเป้าหมาย</p><h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">โปรไฟล์ของฉัน</h2></div><Button onClick={onEdit} className="rounded-full bg-[#152d23]"><Settings /> แก้ไขโปรไฟล์</Button></div>
+    <div className="grid gap-6 lg:grid-cols-[.8fr_1.2fr]">
+      <section className="rounded-[30px] bg-[#152d23] p-7 text-white"><div className="grid size-20 place-items-center rounded-[26px] bg-[#d7ff71] text-3xl font-black text-[#152d23]">{profile.displayName.trim().charAt(0) || "ฉ"}</div><h3 className="mt-6 text-2xl font-black">{profile.displayName || "ยังไม่ได้ตั้งชื่อ"}</h3><p className="mt-2 text-sm leading-6 text-white/60">{profile.bio || "เพิ่มข้อความแนะนำตัวและเป้าหมายทางการเงินของคุณ"}</p><div className="mt-7 space-y-3 border-t border-white/10 pt-6"><ProfileLine icon={<Mail />} value={profile.email || "ยังไม่ได้เพิ่มอีเมล"} /><ProfileLine icon={<Phone />} value={profile.phone || "ยังไม่ได้เพิ่มเบอร์โทร"} /><ProfileLine icon={<MapPin />} value={profile.city || "ยังไม่ได้เพิ่มจังหวัด"} /></div></section>
+      <div className="space-y-6"><section className="rounded-[28px] border border-[#dfe7e1] bg-white p-6 sm:p-7"><div className="flex items-start justify-between"><div><p className="text-sm font-semibold text-[#65766d]">เป้าหมายออมต่อเดือน</p><p className="mt-2 text-4xl font-black tracking-[-0.05em]">฿{money.format(profile.monthlySavingGoal)}</p></div><div className="grid size-12 place-items-center rounded-2xl bg-[#e7f4e5] text-[#39704a]"><PiggyBank /></div></div><p className="mt-5 text-xs leading-5 text-[#77867e]">ใช้เป็นเป้าหมายส่วนตัวสำหรับวางแผนเงินคงเหลือในแต่ละเดือน</p></section>
+        <section className="rounded-[28px] border border-[#dfe7e1] bg-white p-6 sm:p-7"><div className="flex items-center justify-between"><div><h3 className="text-lg font-extrabold">ภาพรวมเงินเก็บ</h3><p className="mt-1 text-xs text-[#7a8981]">{accounts.length} บัญชี</p></div><span className="rounded-full bg-[#eef4eb] px-3 py-1.5 text-xs font-bold">{Math.round(goalProgress)}%</span></div><div className="mt-6 flex items-end justify-between"><div><p className="text-xs text-[#7a8981]">ยอดปัจจุบัน</p><p className="mt-1 text-2xl font-black">฿{money.format(savings)}</p></div><div className="text-right"><p className="text-xs text-[#7a8981]">เป้าหมายรวม</p><p className="mt-1 font-bold">฿{money.format(target)}</p></div></div><Progress value={goalProgress} className="mt-5 h-3 bg-[#e9eeea] [&_[data-slot=progress-indicator]]:bg-[#79ad65]" /></section>
+      </div>
+    </div>
+  </div>;
+}
+
+function ProfileLine({ icon, value }: { icon: React.ReactNode; value: string }) {
+  return <div className="flex items-center gap-3 text-sm text-white/75"><span className="[&>svg]:size-4">{icon}</span><span className="truncate">{value}</span></div>;
+}
+
 function PlannerView({ onBack }: { onBack: () => void }) {
   const [extra, setExtra] = useState(2000);
   return <div className="mx-auto max-w-5xl"><p className="flex items-center gap-2 text-sm font-semibold text-[#5c7366]"><Sparkles className="size-4" /> AI PLANNER</p><h2 className="mt-2 max-w-2xl text-3xl font-black leading-tight tracking-[-0.04em] sm:text-4xl">ลองปรับเงินโปะ แล้วดูว่าคุณจะเป็นอิสระจากหนี้เร็วขึ้นแค่ไหน</h2><div className="mt-8 grid gap-6 lg:grid-cols-[1fr_.9fr]"><section className="rounded-[28px] border border-[#dfe7e1] bg-white p-6 sm:p-8"><label className="text-sm font-bold">เงินที่ต้องการโปะเพิ่มต่อเดือน</label><div className="mt-5 flex items-end gap-2"><span className="pb-1 text-xl font-bold text-[#718078]">฿</span><input aria-label="เงินโปะเพิ่ม" type="number" value={extra} onChange={(e)=>setExtra(Number(e.target.value))} className="w-full border-b-2 border-[#173a2b] bg-transparent pb-2 text-4xl font-black outline-none" /></div><div className="mt-5 flex flex-wrap gap-2">{[1000,2000,3000,5000].map(value=><button key={value} onClick={()=>setExtra(value)} className={`rounded-full px-3 py-2 text-xs font-bold ${extra===value?"bg-[#152d23] text-white":"bg-[#eef3ee]"}`}>฿{money.format(value)}</button>)}</div><div className="mt-8 rounded-2xl bg-[#f1f5f0] p-4"><p className="text-sm font-bold">ใช้กับหนี้ดอกเบี้ยสูงก่อน</p><div className="mt-3 flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl bg-[#cbe6ff]"><CreditCard className="size-5" /></div><div><p className="text-sm font-bold">บัตร K</p><p className="text-xs text-[#718078]">ยอดคงเหลือ ฿48,500</p></div><Check className="ml-auto size-5 text-[#3d7b50]" /></div></div></section><section className="relative overflow-hidden rounded-[28px] bg-[#d7ff71] p-6 sm:p-8"><Lightbulb className="size-8" /><p className="mt-6 text-sm font-semibold">ผลลัพธ์โดยประมาณ</p><p className="mt-2 text-5xl font-black tracking-[-0.06em]">{Math.max(3, Math.round(12-extra/500))} เดือน</p><p className="mt-1 text-sm">เร็วขึ้นจากแผนเดิม</p><div className="mt-8 grid grid-cols-2 gap-3"><div className="rounded-2xl bg-white/65 p-4"><p className="text-xs text-[#58705e]">ดอกเบี้ยที่ลดลง</p><p className="mt-1 text-xl font-black">฿{money.format(extra*3.24)}</p></div><div className="rounded-2xl bg-white/65 p-4"><p className="text-xs text-[#58705e]">ปิดบัตรได้ใน</p><p className="mt-1 text-xl font-black">{Math.max(5, Math.round(14-extra/400))} เดือน</p></div></div><p className="mt-6 flex gap-2 text-xs leading-5 text-[#48614f]"><ShieldCheck className="mt-0.5 size-4 shrink-0" /> ตัวเลขนี้เป็นประมาณการเพื่อช่วยวางแผน ไม่ใช่คำแนะนำทางการเงิน</p></section></div><button onClick={onBack} className="mt-6 text-sm font-bold text-[#4e6759]">กลับไปภาพรวม</button></div>;
@@ -789,6 +852,18 @@ function AddAccountDialog({ open, item, onOpenChange, onSave, onDelete }: { open
   useEffect(() => { if (open) { setName(item?.name ?? ""); setInstitution(item?.institution ?? ""); setBalance(item ? String(item.balance) : ""); setTarget(item ? String(item.target) : ""); setColor(item?.color ?? "lime"); } }, [item, open]);
   const submit = (event: React.FormEvent) => { event.preventDefault(); const balanceValue = Number(balance); const targetValue = Number(target); if (!name.trim() || !institution.trim() || !Number.isFinite(balanceValue) || balanceValue < 0 || !Number.isFinite(targetValue) || targetValue < 0) return; onSave({ id: item?.id ?? Date.now(), name: name.trim(), institution: institution.trim(), balance: balanceValue, target: targetValue, color }); };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-auto rounded-[26px] border-[#dfe7e1] p-0 sm:max-w-[540px]"><form onSubmit={submit}><DialogHeader className="border-b border-[#e4eae5] p-6 text-left"><DialogTitle className="text-2xl font-black">{item ? "แก้ไขบัญชีเงินเก็บ" : "เพิ่มบัญชีเงินเก็บ"}</DialogTitle><DialogDescription>แยกเงินฉุกเฉิน เงินลงทุน หรือเป้าหมายต่าง ๆ ได้หลายบัญชี</DialogDescription></DialogHeader><div className="space-y-5 px-6"><Field label="ชื่อบัญชี"><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="เช่น เงินสำรองฉุกเฉิน" required /></Field><Field label="ธนาคารหรือผู้ให้บริการ"><input className="field-input" value={institution} onChange={(event) => setInstitution(event.target.value)} placeholder="เช่น K PLUS" required /></Field><div className="grid grid-cols-2 gap-4"><Field label="ยอดเงินปัจจุบัน"><input className="field-input" type="number" min="0" step="0.01" value={balance} onChange={(event) => setBalance(event.target.value)} required /></Field><Field label="เป้าหมาย"><input className="field-input" type="number" min="0" step="0.01" value={target} onChange={(event) => setTarget(event.target.value)} required /></Field></div><Field label="สีบัญชี"><select className="field-input" value={color} onChange={(event) => setColor(event.target.value as SavingsAccount["color"])}><option value="lime">เขียวมะนาว</option><option value="blue">ฟ้า</option><option value="orange">ส้ม</option><option value="purple">ม่วง</option></select></Field></div><DialogFooter className="mt-2 flex-row border-t border-[#e4eae5] p-6">{item && <Button type="button" variant="outline" onClick={() => onDelete(item.id)} className="mr-auto h-11 rounded-full border-red-200 px-5 text-red-600">ลบ</Button>}<DialogClose asChild><Button type="button" variant="outline" className="h-11 rounded-full px-5">ยกเลิก</Button></DialogClose><Button type="submit" className="h-11 rounded-full bg-[#152d23] px-6 text-white">บันทึกบัญชี</Button></DialogFooter></form></DialogContent></Dialog>;
+}
+
+function ProfileDialog({ open, profile, onOpenChange, onSave }: { open: boolean; profile: Profile; onOpenChange: (open: boolean) => void; onSave: (profile: Profile) => void }) {
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [city, setCity] = useState("");
+  const [monthlySavingGoal, setMonthlySavingGoal] = useState("");
+  const [bio, setBio] = useState("");
+  useEffect(() => { if (open) { setDisplayName(profile.displayName); setEmail(profile.email); setPhone(profile.phone); setCity(profile.city); setMonthlySavingGoal(String(profile.monthlySavingGoal)); setBio(profile.bio); } }, [open, profile]);
+  const submit = (event: React.FormEvent) => { event.preventDefault(); const goal = Number(monthlySavingGoal); if (!displayName.trim() || !Number.isFinite(goal) || goal < 0) return; onSave({ displayName: displayName.trim(), email: email.trim(), phone: phone.trim(), city: city.trim(), monthlySavingGoal: goal, bio: bio.trim() }); };
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-auto rounded-[26px] border-[#dfe7e1] p-0 sm:max-w-[580px]"><form onSubmit={submit}><DialogHeader className="border-b border-[#e4eae5] p-6 text-left"><div className="mb-3 grid size-12 place-items-center rounded-2xl bg-[#d7ff71]"><UserRound className="size-6" /></div><DialogTitle className="text-2xl font-black">สร้างโปรไฟล์ของฉัน</DialogTitle><DialogDescription>ข้อมูลนี้ใช้ปรับ Dashboard และเป้าหมายการเงินให้เป็นของคุณ</DialogDescription></DialogHeader><div className="space-y-5 px-6"><Field label="ชื่อที่แสดง"><input className="field-input" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="ชื่อหรือชื่อเล่น" required /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="อีเมล"><input className="field-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></Field><Field label="เบอร์โทร"><input className="field-input" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="08x-xxx-xxxx" /></Field></div><div className="grid gap-4 sm:grid-cols-2"><Field label="จังหวัด"><input className="field-input" value={city} onChange={(event) => setCity(event.target.value)} placeholder="เช่น กรุงเทพฯ" /></Field><Field label="เป้าหมายออมต่อเดือน"><input className="field-input" type="number" min="0" step="100" value={monthlySavingGoal} onChange={(event) => setMonthlySavingGoal(event.target.value)} required /></Field></div><Field label="แนะนำตัวหรือเป้าหมาย"><textarea className="field-input min-h-24 resize-none" value={bio} onChange={(event) => setBio(event.target.value)} placeholder="เช่น อยากปลดหนี้และมีเงินสำรอง 6 เดือน" maxLength={180} /></Field></div><DialogFooter className="mt-2 flex-row border-t border-[#e4eae5] p-6"><DialogClose asChild><Button type="button" variant="outline" className="h-11 rounded-full px-5">ยกเลิก</Button></DialogClose><Button type="submit" className="h-11 rounded-full bg-[#152d23] px-6 text-white">บันทึกโปรไฟล์</Button></DialogFooter></form></DialogContent></Dialog>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-sm font-bold"><span className="mb-2 block">{label}</span>{children}</label>; }
