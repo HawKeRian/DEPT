@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowDownToLine, Bell, Bot, Building2, CalendarDays, CarFront, Check, ChevronRight,
+  ArrowDownToLine, Bell, Building2, CalendarDays, CarFront, Check, ChevronRight,
   CircleDollarSign, Cloud, CloudOff, CreditCard, GraduationCap, Home, LayoutDashboard,
   Landmark, Lightbulb, LoaderCircle, Mail, MapPin, Menu, MoreHorizontal, Phone, PiggyBank, Plus, ReceiptText, Settings, UserRound,
   Droplets, Repeat2, ShieldCheck, Smartphone, Sparkles, TrendingDown,
@@ -19,6 +19,7 @@ import { Progress } from "@/components/ui/progress";
 type View = "overview" | "debts" | "expenses" | "incomes" | "savings" | "calendar" | "planner" | "profile";
 type Period = "daily" | "weekly" | "monthly";
 type MoneyCategory = "หนี้สิน" | "ชีวิตประจำวัน" | "การลงทุน" | "อีเวนต์" | "อื่น ๆ";
+type CharacterId = "income-otter" | "expense-rabbit" | "investment-squirrel" | "debt-turtle" | "luxury-cat";
 type Debt = {
   id: number;
   name: string;
@@ -65,7 +66,16 @@ type Profile = {
   city: string;
   monthlySavingGoal: number;
   bio: string;
+  characterId: CharacterId;
 };
+
+const CHARACTERS: { id: CharacterId; name: string; role: string; image: string; tone: string }[] = [
+  { id: "income-otter", name: "น้องรับทรัพย์", role: "ผู้จัดการรายได้", image: "/characters/income-otter.png", tone: "bg-[#eff8cf]" },
+  { id: "expense-rabbit", name: "น้องจดจ่าย", role: "ผู้จัดการรายจ่าย", image: "/characters/expense-rabbit.png", tone: "bg-[#fff0df]" },
+  { id: "investment-squirrel", name: "พี่เติบโต", role: "ผู้จัดการการลงทุน", image: "/characters/investment-squirrel.png", tone: "bg-[#e0f2f2]" },
+  { id: "debt-turtle", name: "เต่าปลดหนี้", role: "ผู้จัดการหนี้สิน", image: "/characters/debt-turtle.png", tone: "bg-[#e5efdf]" },
+  { id: "luxury-cat", name: "แมวใจเย็น", role: "ผู้จัดการของฟุ่มเฟือย", image: "/characters/luxury-cat.png", tone: "bg-[#f2e8f5]" },
+];
 
 const initialDebts: Debt[] = [
   { id: 1, name: "บ้าน", category: "สินเชื่อที่อยู่อาศัย", balance: 2380000, monthly: 16800, progress: 24, due: "5 ต.ค.", tone: "mint" },
@@ -100,6 +110,7 @@ const initialProfile: Profile = {
   city: "",
   monthlySavingGoal: 10000,
   bio: "กำลังตั้งหลักและสร้างความมั่นคงทางการเงิน",
+  characterId: "debt-turtle",
 };
 
 const money = new Intl.NumberFormat("th-TH", { maximumFractionDigits: 0 });
@@ -189,6 +200,7 @@ export default function HomePage() {
   const monthlyExpenseTotal = useMemo(() => expenses.reduce((sum, item) => sum + item.amount, 0), [expenses]);
   const monthlyIncomeTotal = useMemo(() => incomes.reduce((sum, item) => sum + item.amount, 0), [incomes]);
   const savingsTotal = useMemo(() => accounts.reduce((sum, item) => sum + item.balance, 0), [accounts]);
+  const currentCharacter = CHARACTERS.find((item) => item.id === profile.characterId) ?? CHARACTERS[3];
 
   useEffect(() => {
     let active = true;
@@ -510,7 +522,7 @@ export default function HomePage() {
           </div>
           <NavItem active={view === "profile"} icon={<Settings />} label="โปรไฟล์และตั้งค่า" onClick={() => setView("profile")} />
           <button onClick={() => setView("profile")} className="mt-5 flex w-full items-center gap-3 border-t border-[#dfe7e1] pt-5 text-left">
-            <div className="flex size-10 items-center justify-center rounded-full bg-[#d7ff71] font-bold">{profile.displayName.trim().charAt(0) || "ฉ"}</div>
+            <div className={`flex size-12 shrink-0 items-end justify-center overflow-hidden rounded-2xl ${currentCharacter.tone}`}><img src={currentCharacter.image} alt={currentCharacter.name} className="h-[115%] w-full object-contain object-bottom" /></div>
             <div className="min-w-0"><p className="truncate text-sm font-semibold">{profile.displayName || "โปรไฟล์ของฉัน"}</p><p className="truncate text-xs text-[#6c7c74]">{profile.email || "บัญชีส่วนตัว"}</p></div>
             <MoreHorizontal className="ml-auto size-5 text-[#6c7c74]" />
           </button>
@@ -522,6 +534,7 @@ export default function HomePage() {
           <button className="mr-3 rounded-xl p-2 lg:hidden" onClick={() => setMenuOpen(!menuOpen)} aria-label="เปิดเมนู"><Menu className="size-5" /></button>
           <div><p className="text-xs font-medium text-[#718078]">{todayLabel}</p><h1 className="text-lg font-bold tracking-[-0.02em]">{greeting}, {profile.displayName || "คุณ"}</h1></div>
           <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => setView("profile")} className={`hidden size-11 items-end justify-center overflow-hidden rounded-2xl sm:flex ${currentCharacter.tone}`} title={`${currentCharacter.name} · เปลี่ยนตัวละคร`}><img src={currentCharacter.image} alt="" className="h-[118%] w-full object-contain object-bottom" /></button>
             <SyncBadge status={syncStatus} />
             <button className="relative flex size-10 items-center justify-center rounded-full border border-[#dfe7e1] bg-white" aria-label="การแจ้งเตือน"><Bell className="size-[18px]" /><span className="absolute right-2 top-2 size-2 rounded-full bg-[#ff7657] ring-2 ring-white" /></button>
             <Button onClick={() => {
@@ -553,7 +566,7 @@ export default function HomePage() {
 
         <div className="mx-auto max-w-[1440px] p-4 sm:p-7 lg:p-10">
           <div className="mb-6 flex justify-end"><PeriodSwitch period={period} onChange={setPeriod} /></div>
-          {view === "overview" && <Overview debts={debts} expenses={expenses} incomes={incomes} accounts={accounts} period={period} monthlyTotal={monthlyTotal} monthlyExpenseTotal={monthlyExpenseTotal} monthlyIncomeTotal={monthlyIncomeTotal} totalBalance={totalBalance} onViewAll={() => setView("debts")} onViewExpenses={() => setView("expenses")} onPlanner={() => setView("planner")} />}
+          {view === "overview" && <Overview debts={debts} expenses={expenses} incomes={incomes} accounts={accounts} profile={profile} period={period} monthlyTotal={monthlyTotal} monthlyExpenseTotal={monthlyExpenseTotal} monthlyIncomeTotal={monthlyIncomeTotal} totalBalance={totalBalance} onViewAll={() => setView("debts")} onViewExpenses={() => setView("expenses")} onPlanner={() => setView("planner")} />}
           {view === "debts" && <DebtsView debts={debts} totalBalance={totalBalance} monthlyTotal={monthlyTotal} onAdd={() => { setEditingDebt(null); setAddOpen(true); }} onEdit={(debt) => { setEditingDebt(debt); setAddOpen(true); }} />}
           {view === "incomes" && <IncomesView incomes={incomes} period={period} onAdd={() => { setEditingIncome(null); setAddIncomeOpen(true); }} onEdit={(income) => { setEditingIncome(income); setAddIncomeOpen(true); }} />}
           {view === "expenses" && <ExpensesView expenses={expenses} monthlyExpenseTotal={monthlyExpenseTotal} monthlyDebtTotal={monthlyTotal} monthlyIncomeTotal={monthlyIncomeTotal} period={period} onAdd={() => { setEditingExpense(null); setAddExpenseOpen(true); }} onEdit={(expense) => { setEditingExpense(expense); setAddExpenseOpen(true); }} />}
@@ -612,7 +625,7 @@ function PeriodSwitch({ period, onChange }: { period: Period; onChange: (period:
 const periodFactor = (period: Period) => period === "daily" ? 1 / 30 : period === "weekly" ? 7 / 30 : 1;
 const periodText = (period: Period) => period === "daily" ? "วันนี้" : period === "weekly" ? "สัปดาห์นี้" : "เดือนนี้";
 
-function Overview({ debts, expenses, incomes, accounts, period, monthlyTotal, monthlyExpenseTotal, monthlyIncomeTotal, totalBalance, onViewAll, onViewExpenses, onPlanner }: { debts: Debt[]; expenses: Expense[]; incomes: Income[]; accounts: SavingsAccount[]; period: Period; monthlyTotal: number; monthlyExpenseTotal: number; monthlyIncomeTotal: number; totalBalance: number; onViewAll: () => void; onViewExpenses: () => void; onPlanner: () => void }) {
+function Overview({ debts, expenses, incomes, accounts, profile, period, monthlyTotal, monthlyExpenseTotal, monthlyIncomeTotal, totalBalance, onViewAll, onViewExpenses, onPlanner }: { debts: Debt[]; expenses: Expense[]; incomes: Income[]; accounts: SavingsAccount[]; profile: Profile; period: Period; monthlyTotal: number; monthlyExpenseTotal: number; monthlyIncomeTotal: number; totalBalance: number; onViewAll: () => void; onViewExpenses: () => void; onPlanner: () => void }) {
   const factor = periodFactor(period);
   const income = monthlyIncomeTotal * factor;
   const essentials = monthlyExpenseTotal * factor;
@@ -622,6 +635,7 @@ function Overview({ debts, expenses, incomes, accounts, period, monthlyTotal, mo
     category,
     amount: category === "หนี้สิน" ? debtPayment : expenses.filter((item) => item.category === category).reduce((sum, item) => sum + item.amount * factor, 0),
   }));
+  const character = CHARACTERS.find((item) => item.id === profile.characterId) ?? CHARACTERS[3];
   return <div className="space-y-6">
     <div className="grid gap-6 xl:grid-cols-[1.4fr_.9fr]">
       <section className="relative overflow-hidden rounded-[28px] bg-[#152d23] p-6 text-white shadow-[0_24px_60px_rgba(20,45,35,.16)] sm:p-8">
@@ -661,7 +675,7 @@ function Overview({ debts, expenses, incomes, accounts, period, monthlyTotal, mo
         <div className="divide-y divide-[#e7ece8]">{debts.slice(0, 4).map((debt) => <DebtRow key={debt.id} debt={debt} />)}</div>
       </section>
       <section className="overflow-hidden rounded-[28px] bg-[#e6efdf] p-6 sm:p-7">
-        <div className="flex items-center justify-between"><span className="flex items-center gap-2 text-sm font-bold"><span className="grid size-9 place-items-center rounded-xl bg-white"><Bot className="size-5" /></span> AI แนะนำวันนี้</span><Sparkles className="size-5 text-[#52725d]" /></div>
+        <div className="flex items-center justify-between"><span className="flex items-center gap-2 text-sm font-bold"><span className={`flex size-11 items-end justify-center overflow-hidden rounded-xl ${character.tone}`}><img src={character.image} alt="" className="h-[120%] object-contain object-bottom" /></span> {character.name} แนะนำวันนี้</span><Sparkles className="size-5 text-[#52725d]" /></div>
         <h2 className="mt-7 max-w-[330px] text-2xl font-black leading-snug tracking-[-0.04em]">ถ้าโปะบัตรเครดิตเพิ่ม ฿2,000 คุณจะประหยัดดอกเบี้ยได้</h2>
         <p className="mt-3 text-sm leading-6 text-[#56675d]">จากกระแสเงินสดเดือนนี้ คุณยังเหลือเงินสำรองหลังโปะประมาณ ฿9,020</p>
         <div className="mt-6 grid grid-cols-2 gap-3"><div className="rounded-2xl bg-white/70 p-4"><p className="text-xs text-[#718078]">หมดเร็วขึ้น</p><p className="mt-1 text-xl font-black">8 เดือน</p></div><div className="rounded-2xl bg-white/70 p-4"><p className="text-xs text-[#718078]">ดอกเบี้ยลดลง</p><p className="mt-1 text-xl font-black">฿6,480</p></div></div>
@@ -746,10 +760,11 @@ function ProfileView({ profile, accounts, onEdit }: { profile: Profile; accounts
   const savings = accounts.reduce((sum, item) => sum + item.balance, 0);
   const target = accounts.reduce((sum, item) => sum + item.target, 0);
   const goalProgress = target > 0 ? Math.min(100, savings / target * 100) : 0;
+  const character = CHARACTERS.find((item) => item.id === profile.characterId) ?? CHARACTERS[3];
   return <div className="mx-auto max-w-5xl">
     <div className="mb-7 flex items-end justify-between"><div><p className="text-sm font-semibold text-[#75847c]">ข้อมูลส่วนตัวและเป้าหมาย</p><h2 className="mt-1 text-3xl font-black tracking-[-0.04em]">โปรไฟล์ของฉัน</h2></div><Button onClick={onEdit} className="rounded-full bg-[#152d23]"><Settings /> แก้ไขโปรไฟล์</Button></div>
     <div className="grid gap-6 lg:grid-cols-[.8fr_1.2fr]">
-      <section className="rounded-[30px] bg-[#152d23] p-7 text-white"><div className="grid size-20 place-items-center rounded-[26px] bg-[#d7ff71] text-3xl font-black text-[#152d23]">{profile.displayName.trim().charAt(0) || "ฉ"}</div><h3 className="mt-6 text-2xl font-black">{profile.displayName || "ยังไม่ได้ตั้งชื่อ"}</h3><p className="mt-2 text-sm leading-6 text-white/60">{profile.bio || "เพิ่มข้อความแนะนำตัวและเป้าหมายทางการเงินของคุณ"}</p><div className="mt-7 space-y-3 border-t border-white/10 pt-6"><ProfileLine icon={<Mail />} value={profile.email || "ยังไม่ได้เพิ่มอีเมล"} /><ProfileLine icon={<Phone />} value={profile.phone || "ยังไม่ได้เพิ่มเบอร์โทร"} /><ProfileLine icon={<MapPin />} value={profile.city || "ยังไม่ได้เพิ่มจังหวัด"} /></div></section>
+      <section className="rounded-[30px] bg-[#152d23] p-7 text-white"><div className={`flex h-44 w-full items-end justify-center overflow-hidden rounded-[26px] ${character.tone}`}><img src={character.image} alt={character.name} className="h-[112%] max-w-[82%] object-contain object-bottom" /></div><div className="mt-4 flex items-center justify-between gap-3"><div><p className="text-xs font-bold text-[#d7ff71]">{character.name}</p><p className="mt-1 text-xs text-white/50">{character.role}</p></div><button onClick={onEdit} className="rounded-full border border-white/15 px-3 py-2 text-xs font-bold">เปลี่ยนตัวละคร</button></div><h3 className="mt-6 text-2xl font-black">{profile.displayName || "ยังไม่ได้ตั้งชื่อ"}</h3><p className="mt-2 text-sm leading-6 text-white/60">{profile.bio || "เพิ่มข้อความแนะนำตัวและเป้าหมายทางการเงินของคุณ"}</p><div className="mt-7 space-y-3 border-t border-white/10 pt-6"><ProfileLine icon={<Mail />} value={profile.email || "ยังไม่ได้เพิ่มอีเมล"} /><ProfileLine icon={<Phone />} value={profile.phone || "ยังไม่ได้เพิ่มเบอร์โทร"} /><ProfileLine icon={<MapPin />} value={profile.city || "ยังไม่ได้เพิ่มจังหวัด"} /></div></section>
       <div className="space-y-6"><section className="rounded-[28px] border border-[#dfe7e1] bg-white p-6 sm:p-7"><div className="flex items-start justify-between"><div><p className="text-sm font-semibold text-[#65766d]">เป้าหมายออมต่อเดือน</p><p className="mt-2 text-4xl font-black tracking-[-0.05em]">฿{money.format(profile.monthlySavingGoal)}</p></div><div className="grid size-12 place-items-center rounded-2xl bg-[#e7f4e5] text-[#39704a]"><PiggyBank /></div></div><p className="mt-5 text-xs leading-5 text-[#77867e]">ใช้เป็นเป้าหมายส่วนตัวสำหรับวางแผนเงินคงเหลือในแต่ละเดือน</p></section>
         <section className="rounded-[28px] border border-[#dfe7e1] bg-white p-6 sm:p-7"><div className="flex items-center justify-between"><div><h3 className="text-lg font-extrabold">ภาพรวมเงินเก็บ</h3><p className="mt-1 text-xs text-[#7a8981]">{accounts.length} บัญชี</p></div><span className="rounded-full bg-[#eef4eb] px-3 py-1.5 text-xs font-bold">{Math.round(goalProgress)}%</span></div><div className="mt-6 flex items-end justify-between"><div><p className="text-xs text-[#7a8981]">ยอดปัจจุบัน</p><p className="mt-1 text-2xl font-black">฿{money.format(savings)}</p></div><div className="text-right"><p className="text-xs text-[#7a8981]">เป้าหมายรวม</p><p className="mt-1 font-bold">฿{money.format(target)}</p></div></div><Progress value={goalProgress} className="mt-5 h-3 bg-[#e9eeea] [&_[data-slot=progress-indicator]]:bg-[#79ad65]" /></section>
       </div>
@@ -861,9 +876,10 @@ function ProfileDialog({ open, profile, onOpenChange, onSave }: { open: boolean;
   const [city, setCity] = useState("");
   const [monthlySavingGoal, setMonthlySavingGoal] = useState("");
   const [bio, setBio] = useState("");
-  useEffect(() => { if (open) { setDisplayName(profile.displayName); setEmail(profile.email); setPhone(profile.phone); setCity(profile.city); setMonthlySavingGoal(String(profile.monthlySavingGoal)); setBio(profile.bio); } }, [open, profile]);
-  const submit = (event: React.FormEvent) => { event.preventDefault(); const goal = Number(monthlySavingGoal); if (!displayName.trim() || !Number.isFinite(goal) || goal < 0) return; onSave({ displayName: displayName.trim(), email: email.trim(), phone: phone.trim(), city: city.trim(), monthlySavingGoal: goal, bio: bio.trim() }); };
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-auto rounded-[26px] border-[#dfe7e1] p-0 sm:max-w-[580px]"><form onSubmit={submit}><DialogHeader className="border-b border-[#e4eae5] p-6 text-left"><div className="mb-3 grid size-12 place-items-center rounded-2xl bg-[#d7ff71]"><UserRound className="size-6" /></div><DialogTitle className="text-2xl font-black">สร้างโปรไฟล์ของฉัน</DialogTitle><DialogDescription>ข้อมูลนี้ใช้ปรับ Dashboard และเป้าหมายการเงินให้เป็นของคุณ</DialogDescription></DialogHeader><div className="space-y-5 px-6"><Field label="ชื่อที่แสดง"><input className="field-input" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="ชื่อหรือชื่อเล่น" required /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="อีเมล"><input className="field-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></Field><Field label="เบอร์โทร"><input className="field-input" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="08x-xxx-xxxx" /></Field></div><div className="grid gap-4 sm:grid-cols-2"><Field label="จังหวัด"><input className="field-input" value={city} onChange={(event) => setCity(event.target.value)} placeholder="เช่น กรุงเทพฯ" /></Field><Field label="เป้าหมายออมต่อเดือน"><input className="field-input" type="number" min="0" step="100" value={monthlySavingGoal} onChange={(event) => setMonthlySavingGoal(event.target.value)} required /></Field></div><Field label="แนะนำตัวหรือเป้าหมาย"><textarea className="field-input min-h-24 resize-none" value={bio} onChange={(event) => setBio(event.target.value)} placeholder="เช่น อยากปลดหนี้และมีเงินสำรอง 6 เดือน" maxLength={180} /></Field></div><DialogFooter className="mt-2 flex-row border-t border-[#e4eae5] p-6"><DialogClose asChild><Button type="button" variant="outline" className="h-11 rounded-full px-5">ยกเลิก</Button></DialogClose><Button type="submit" className="h-11 rounded-full bg-[#152d23] px-6 text-white">บันทึกโปรไฟล์</Button></DialogFooter></form></DialogContent></Dialog>;
+  const [characterId, setCharacterId] = useState<CharacterId>("debt-turtle");
+  useEffect(() => { if (open) { setDisplayName(profile.displayName); setEmail(profile.email); setPhone(profile.phone); setCity(profile.city); setMonthlySavingGoal(String(profile.monthlySavingGoal)); setBio(profile.bio); setCharacterId(profile.characterId ?? "debt-turtle"); } }, [open, profile]);
+  const submit = (event: React.FormEvent) => { event.preventDefault(); const goal = Number(monthlySavingGoal); if (!displayName.trim() || !Number.isFinite(goal) || goal < 0) return; onSave({ displayName: displayName.trim(), email: email.trim(), phone: phone.trim(), city: city.trim(), monthlySavingGoal: goal, bio: bio.trim(), characterId }); };
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-auto rounded-[26px] border-[#dfe7e1] p-0 sm:max-w-[580px]"><form onSubmit={submit}><DialogHeader className="border-b border-[#e4eae5] p-6 text-left"><div className="mb-3 grid size-12 place-items-center rounded-2xl bg-[#d7ff71]"><UserRound className="size-6" /></div><DialogTitle className="text-2xl font-black">สร้างโปรไฟล์ของฉัน</DialogTitle><DialogDescription>ข้อมูลนี้ใช้ปรับ Dashboard และเป้าหมายการเงินให้เป็นของคุณ</DialogDescription></DialogHeader><div className="space-y-5 px-6"><Field label="ชื่อที่แสดง"><input className="field-input" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="ชื่อหรือชื่อเล่น" required /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="อีเมล"><input className="field-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></Field><Field label="เบอร์โทร"><input className="field-input" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="08x-xxx-xxxx" /></Field></div><div className="grid gap-4 sm:grid-cols-2"><Field label="จังหวัด"><input className="field-input" value={city} onChange={(event) => setCity(event.target.value)} placeholder="เช่น กรุงเทพฯ" /></Field><Field label="เป้าหมายออมต่อเดือน"><input className="field-input" type="number" min="0" step="100" value={monthlySavingGoal} onChange={(event) => setMonthlySavingGoal(event.target.value)} required /></Field></div><Field label="แนะนำตัวหรือเป้าหมาย"><textarea className="field-input min-h-24 resize-none" value={bio} onChange={(event) => setBio(event.target.value)} placeholder="เช่น อยากปลดหนี้และมีเงินสำรอง 6 เดือน" maxLength={180} /></Field><div><p className="mb-3 text-sm font-bold">เลือกตัวละครประจำโปรไฟล์</p><div className="grid grid-cols-2 gap-3 sm:grid-cols-5">{CHARACTERS.map((character) => <button type="button" key={character.id} onClick={() => setCharacterId(character.id)} className={`rounded-2xl border-2 p-2 text-center transition ${characterId === character.id ? "border-[#152d23] bg-[#eef5e9]" : "border-transparent bg-[#f4f7f3] hover:border-[#b9c9bd]"}`}><span className={`flex h-24 items-end justify-center overflow-hidden rounded-xl ${character.tone}`}><img src={character.image} alt={character.name} className="h-[112%] max-w-full object-contain object-bottom" /></span><span className="mt-2 block text-[11px] font-black">{character.name}</span><span className="mt-0.5 block text-[9px] text-[#718078]">{character.role.replace("ผู้จัดการ", "")}</span></button>)}</div></div></div><DialogFooter className="mt-2 flex-row border-t border-[#e4eae5] p-6"><DialogClose asChild><Button type="button" variant="outline" className="h-11 rounded-full px-5">ยกเลิก</Button></DialogClose><Button type="submit" className="h-11 rounded-full bg-[#152d23] px-6 text-white">บันทึกโปรไฟล์</Button></DialogFooter></form></DialogContent></Dialog>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-sm font-bold"><span className="mb-2 block">{label}</span>{children}</label>; }
