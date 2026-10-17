@@ -1,126 +1,147 @@
-# vinext-starter
+# ตั้งหลัก (D.E.P.T)
 
-A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
+> ผู้ช่วยจัดการหนี้ รายรับ รายจ่าย เงินออม และเป้าหมายทางการเงินส่วนบุคคล — ออกแบบให้ใช้ง่ายบนมือถือและเข้าใจภาพรวมการเงินได้ในหน้าเดียว
 
-## Prerequisites
+<p align="center">
+  <img src="public/characters/income-otter.png" width="92" alt="น้องรับทรัพย์ ผู้ช่วยจัดการรายได้" />
+  <img src="public/characters/expense-rabbit.png" width="92" alt="น้องจดจ่าย ผู้ช่วยจัดการรายจ่าย" />
+  <img src="public/characters/investment-squirrel.png" width="92" alt="พี่เติบโต ผู้ช่วยจัดการการลงทุน" />
+  <img src="public/characters/debt-turtle.png" width="92" alt="เต่าปลดหนี้ ผู้ช่วยจัดการหนี้สิน" />
+  <img src="public/characters/luxury-cat.png" width="92" alt="แมวใจเย็น ผู้ช่วยดูแลรายจ่ายฟุ่มเฟือย" />
+</p>
 
-- Node.js `>=22.13.0`
-- Portable: Windows, macOS, or Linux; no Bash required
-- Managed Linux: managed Linux runtime with Bash, `flock`, `curl`, `sha256sum`, and GNU `timeout`
-- Git is required only for publishing
+## โปรเจกต์นี้คืออะไร
 
-## Sites Lifecycle
+**ตั้งหลัก** คือเว็บแอปวางแผนการเงินส่วนบุคคลที่เริ่มจากโจทย์สำคัญที่สุด: ทำให้หนี้ก้อนใหญ่และภาระที่ต้องจ่ายในแต่ละเดือนมองเห็นและจัดการได้ง่ายขึ้น
 
-The Sites initializer copies the shared starter and selects managed-linux only when `SITES_MANAGED_LINUX_CONTAINER=1`; otherwise it selects portable. It saves the selection only in ignored `.sites-runtime/execution-profile.json`. Both profiles copy/configure first, then use the plugin's separate `install-dependencies.mjs` step to measure installation independently. Edit source under `app/` and follow the Sites skill for installation, preview, builds, and publishing.
+แอปรวมข้อมูลหนี้ รายรับ รายจ่ายประจำ เงินออม และการลงทุนไว้ในแดชบอร์ดเดียว พร้อมมุมมองรายวัน รายสัปดาห์ และรายเดือน เพื่อช่วยตอบคำถามว่า “เดือนนี้มีเงินเข้าเท่าไร ต้องจ่ายอะไรบ้าง และยังเหลือสำหรับเป้าหมายเท่าไร”
 
-Run `node <plugin-root>/scripts/configure-execution-profile.mjs` only when the profile is unknown for the current checkout and environment. Profile changes do not alter tracked source or require reinstalling otherwise-valid dependencies; restart an existing preview to use the new selection. Do not commit or upload `.sites-runtime/`.
+- **ทดลองใช้งานออนไลน์:** [tanglak-debt.honong2350.chatgpt.site](https://tanglak-debt.honong2350.chatgpt.site/)
+- **Repository:** [github.com/HawKeRian/DEPT](https://github.com/HawKeRian/DEPT)
 
-This starter does not use `wrangler.jsonc`.
+> เวอร์ชันบน GitHub และที่รันบนเครื่องอาจมีฟีเจอร์ใหม่กว่าเวอร์ชันออนไลน์
 
-`install:ci` runs `npm ci` once against the shared lockfile, disables parent-workspace discovery, and includes required dev/optional dependencies despite production/omit settings. Sharp defaults to prebuilt binaries unless explicitly configured otherwise. Do not overlap installers.
+## ฟีเจอร์หลัก
 
-- **Portable:** Preserve host HOME, npm cache, registry, proxy, temporary paths, retry/concurrency settings, and lifecycle-script policy. Use `--prefer-offline --no-audit --no-fund`.
-- **Managed Linux:** Use the existing project-local HOME/cache/tmp setup and Linux install lock, tarball preflight, and timeout. Restore the image-seeded npm cache only when its lockfile hash matches; retain network fallback. Builds keep their existing timeout. These helpers are not invoked by the portable profile.
+| ส่วนงาน | สิ่งที่ทำได้ |
+| --- | --- |
+| ภาพรวมการเงิน | ดูยอดรายรับ รายจ่าย ภาระหนี้ เงินคงเหลือ และรายการที่ใกล้ถึงกำหนด |
+| หนี้สิน | เพิ่มและติดตามหนี้บ้าน รถ บัตรเครดิต กยศ. หรือหนี้ประเภทอื่น พร้อมยอดคงเหลือ ค่างวด และความคืบหน้า |
+| รายรับและรายจ่าย | บันทึกรายรับ รวมถึงค่าน้ำ ค่าไฟ ค่าโทรศัพท์ ค่าอินเทอร์เน็ต อาหาร และรายจ่ายประจำอื่น ๆ |
+| หมวดหมู่ | แยกรายการเป็นหนี้สิน ชีวิตประจำวัน การลงทุน อีเวนต์ และอื่น ๆ |
+| เงินออม | สร้างบัญชีเงินเก็บได้หลายบัญชี พร้อมยอดคงเหลือและเป้าหมายของแต่ละบัญชี |
+| ช่วงเวลา | สลับดูข้อมูลแบบรายวัน รายสัปดาห์ และรายเดือน |
+| โปรไฟล์ | แก้ไขชื่อ ข้อมูลส่วนตัว และรูปแบบการแสดงผลของผู้ใช้ |
+| AI Planner | จำลองแนวทางจัดสรรเงินและวางแผนปลดหนี้จากข้อมูลที่ผู้ใช้บันทึก |
+| รองรับมือถือ | เลย์เอาต์ responsive ใช้งานได้ทั้งโทรศัพท์ แท็บเล็ต และคอมพิวเตอร์ |
 
-`scripts/sites-env.mjs` preserves the caller's HOME, npm cache, proxy, XDG, and temporary-directory configuration while defaulting Wrangler and Miniflare state to the checkout. If npm reports an unwritable cache, select a writable path with `npm_config_cache` for that install. The `dev` and `start` scripts also keep Wrangler logs inside the checkout. Generated `.sites-runtime/` and `.wrangler/` directories are disposable and ignored by Git.
+## ตัวละครผู้ช่วย
 
-On portable, `npm run dev` uses `vinext dev` with HMR, starting at port 5173. Vinext records the running server in ignored `.vinext/` state, rejects an ordinary duplicate launch, and recovers stale state after a stopped process; exactly simultaneous starts can race. Pass `--port <port>` or `--hostname <host>` after `npm run dev --` when needed; keep portable previews on loopback.
+ผู้ใช้สามารถเลือกตัวละครประจำฟีเจอร์ และเปลี่ยนตัวละครได้ภายหลัง
 
-For browser QA on managed Linux, use `sites-preview start`. The project's dev script runs Vite and accepts the supervisor's `--host 0.0.0.0 --port 4173 --strictPort` arguments. The internal browser uses `http://terminal.local:4173/`; it is not a user-facing URL. The supervisor owns the preview lifecycle. The ignored local profile survives the supervisor's cleared process environment.
+| ตัวละคร | หน้าที่ |
+| --- | --- |
+| **น้องรับทรัพย์** | ผู้ช่วยจัดการรายได้ |
+| **น้องจดจ่าย** | ผู้ช่วยจัดการรายจ่าย |
+| **พี่เติบโต** | ผู้ช่วยจัดการการลงทุน |
+| **เต่าปลดหนี้** | ผู้ช่วยจัดการหนี้สิน |
+| **แมวใจเย็น** | ผู้ช่วยดูแลรายจ่ายฟุ่มเฟือย |
 
-The portable profile simulates ChatGPT sign-in only for loopback development requests. Visit `/signin-with-chatgpt?return_to=/` to sign in as `local_seedy` (`seedy@sites.test`, display name `Seedy`) and `/signout-with-chatgpt?return_to=/` to sign out. The development cookie preserves that identity across server restarts. Mock auth is disabled in the managed-linux profile and is not included in production builds; hosted authentication remains dispatch-owned.
+## การจัดเก็บข้อมูล
 
-The Worker uses `vinext/server/fetch-handler`, including Vinext's config-aware image handling. After building, `npm start` runs that Worker locally through Wrangler on `127.0.0.1`, sharing `.wrangler/state` with dev preview and local D1 migrations; it does not deploy the site or simulate sign-in. Use the URL printed by the server. Pass `npm start -- --port <port>` to select a different built-preview port.
+แอปใช้แนวทาง **local-first** เพื่อให้เปิดใช้งานและเห็นข้อมูลได้รวดเร็ว
 
-Local previews use Miniflare's placeholder `Request.cf` metadata without a network lookup. Set `CLOUDFLARE_CF_FETCH_ENABLED=true` to opt into fetching preview metadata; this setting does not change hosted request metadata.
+1. ข้อมูลหน้าจอถูกเก็บไว้ใน `localStorage` ของเบราว์เซอร์
+2. เมื่อระบบยืนยันตัวตนและฐานข้อมูลพร้อม แอปจะซิงก์ข้อมูลผ่าน API
+3. ข้อมูลฝั่งเซิร์ฟเวอร์จัดเก็บด้วย Cloudflare D1 และแยกตามผู้ใช้
 
-Local tool usage metrics are disabled by default. Set `WRANGLER_SEND_METRICS=true` to opt in.
+ข้อมูลที่เก็บในเบราว์เซอร์จะผูกกับอุปกรณ์และเบราว์เซอร์นั้น การล้างข้อมูลเว็บไซต์อาจทำให้ข้อมูล local หายได้ จึงไม่ควรใช้เป็นสำเนาสำรองเพียงแห่งเดียว
 
-## Included Shape
+## เริ่มต้นใช้งานบนเครื่อง
 
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `@cloudflare/workers-types` provides Worker types; `cloudflare-env.d.ts` declares optional `DB`/`BUCKET` bindings—update these declarations if binding names change
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+### สิ่งที่ต้องมี
 
-## Workspace Auth Headers
+- [Node.js](https://nodejs.org/) เวอร์ชัน `22.13.0` ขึ้นไป
+- Git
+- npm
 
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
+### ติดตั้งและเปิดเซิร์ฟเวอร์
 
-The user ID is stable for the same user on the same Site and different across Sites. Use it as the durable user key; use email and name for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive `oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty `name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by `oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```powershell
+git clone https://github.com/HawKeRian/DEPT.git
+cd DEPT
+npm install
+npm run dev
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+จากนั้นเปิด [http://127.0.0.1:5173](http://127.0.0.1:5173) ในเบราว์เซอร์
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs optional or required ChatGPT sign-in:
+หากต้องการทดสอบฟีเจอร์ที่ต้องมีผู้ใช้ในโหมด local ให้เปิด:
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use the returned `userId` as the stable user key for user-owned records; do not use email as a durable identifier.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send anonymous visitors through Sign in with ChatGPT.
-- In a Server Component, start sign-in with `<a href={chatGPTSignInPath(returnTo)} target="_top">`. The auth helper module is server-only; do not import it into a Client Component.
-- Do not use `fetch`, XHR, a client-side router, or a framework link that can prefetch the sign-in route. SIWC must start as a top-level navigation.
-- Never request the AuthAPI authorization endpoint directly. The dispatch-owned `/signin-with-chatgpt` route must start the SIWC flow.
-- Use `chatGPTSignOutPath(returnTo)` for browser sign-out links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the OAuth cookies, and identity header injection. Do not implement app routes for those reserved paths. Routes that do not import and call the helper remain anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the Sites hosting platform's access policy controls for workspace-wide restrictions, or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Local D1 migrations
-
-For a D1-backed local preview, generate SQL with `npm run db:generate`. Build once through the Sites skill's build entrypoint (or `npm run build` for standalone use) to generate `dist/server/wrangler.json`, rebuilding if bindings change. From the project root, apply each pending migration in order:
-
-```sh
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_example.sql
+```text
+http://127.0.0.1:5173/signin-with-chatgpt?return_to=/
 ```
 
-Replace the filename with the pending migration and `DB` with your D1 binding name if different. Use `.wrangler/state`, not `.wrangler/state/v3`; Wrangler adds the versioned directories. Do not replay migrations already applied locally. This updates only the preview database; publishing applies production migrations separately.
+บัญชีทดสอบนี้ใช้เฉพาะบนเครื่องและไม่ถูกรวมใน production build
 
-## Diagnostic Commands
+## คำสั่งที่ใช้บ่อย
 
-- `npm run install:ci`: perform the one locked dependency install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: preview the built Worker locally with D1/R2 support
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+| คำสั่ง | ใช้สำหรับ |
+| --- | --- |
+| `npm run dev` | เปิด development server พร้อม hot reload |
+| `npm run build` | สร้าง production build |
+| `npm run start` | เปิด preview จาก production build บนเครื่อง |
+| `npm run db:generate` | สร้าง migration เมื่อแก้ไข schema ของฐานข้อมูล |
 
-When using the Sites plugin, follow its skill instructions for installation, builds, and publishing. These npm commands remain available for standalone use.
+หากคำสั่ง `npm` ไม่อยู่ใน `PATH` สามารถเปิด development server โดยตรงด้วย:
 
-The portable build runs Vinext directly without a host `timeout` command. The managed-linux build uses `scripts/build-verified.sh` and its existing `SITES_BUILD_TIMEOUT` setting.
+```powershell
+node scripts/run-framework.mjs dev
+```
 
-## Learn More
+## โครงสร้างโปรเจกต์
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+```text
+DEPT/
+├── app/
+│   ├── api/finance-state/   # API สำหรับอ่านและบันทึกข้อมูลการเงิน
+│   ├── page.tsx             # หน้าหลักและ UI ของแอป
+│   └── globals.css          # สไตล์ส่วนกลาง
+├── db/                      # การเชื่อมต่อและ schema ของฐานข้อมูล
+├── drizzle/                 # SQL migrations
+├── public/characters/       # รูปตัวละครผู้ช่วย
+├── scripts/                 # สคริปต์สำหรับ dev, build และ runtime
+└── package.json
+```
+
+## เทคโนโลยีที่ใช้
+
+- React 19 และ TypeScript
+- Vinext และ Vite
+- Tailwind CSS
+- Cloudflare Workers และ D1
+- Drizzle ORM
+
+## สถานะและข้อจำกัดปัจจุบัน
+
+- การเข้าสู่ระบบด้วยอีเมลทั่วไปยังไม่ได้เชื่อมต่อจริง ปัจจุบัน hosted version ใช้ระบบยืนยันตัวตนของแพลตฟอร์ม และ local development มีบัญชีจำลอง
+- ยังไม่ได้เชื่อมต่อบัญชีธนาคารหรือดึงรายการเดินบัญชีอัตโนมัติ
+- AI Planner เป็นเครื่องมือช่วยจำลองแผนจากข้อมูลที่ผู้ใช้กรอก ไม่ใช่คำแนะนำทางการเงินจากผู้เชี่ยวชาญ
+- โปรเจกต์ยังอยู่ระหว่างพัฒนา รูปแบบข้อมูลและหน้าจออาจเปลี่ยนแปลงได้
+
+## Roadmap
+
+- [ ] เข้าสู่ระบบด้วยอีเมลและจัดการบัญชีผู้ใช้อย่างอิสระ
+- [ ] สำรองและซิงก์ข้อมูลข้ามอุปกรณ์
+- [ ] นำเข้ารายการจากธนาคารหรือไฟล์ statement อย่างปลอดภัย
+- [ ] แจ้งเตือนวันครบกำหนดชำระและรายจ่ายประจำ
+- [ ] เพิ่มคำแนะนำ AI ที่อธิบายเหตุผลและปรับตามเป้าหมายผู้ใช้
+- [ ] เพิ่ม animation และบุคลิกให้ตัวละครผู้ช่วย
+
+## ความเป็นส่วนตัวและความปลอดภัย
+
+ไฟล์ secret, environment variables, ฐานข้อมูล local และไฟล์ build ที่ไม่ควรเผยแพร่ถูกตัดออกจาก Git ผ่าน `.gitignore` แล้ว อย่า commit รหัสผ่าน API key token หรือข้อมูลการเงินจริงลงใน repository สาธารณะ
+
+---
+
+สร้างขึ้นเพื่อช่วยให้การจัดการเงินเป็นเรื่องที่มองเห็น เข้าใจ และค่อย ๆ ลงมือทำได้จริง
